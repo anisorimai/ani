@@ -58,19 +58,12 @@ _RAG_INDEX   = "rag_vector_index"   # Atlas vector index name — separate from 
 _CANDIDATE_K: int = int(os.getenv("RAG_CANDIDATE_K", "50"))
 
 
-def _scope_filter(user_id: str, org_id: Optional[str]) -> dict:
+def _scope_filter(user_id: str = "", org_id: Optional[str] = None) -> dict:
     """
-    Build a MongoDB filter that matches either:
-      • user-scoped chunks owned by this user, OR
-      • org-scoped chunks belonging to the user's org (when org_id is set)
-
-    The $or union is intentional: users should always see org reference docs
-    alongside their own personal uploads.
+    Build a MongoDB filter. Since we migrated to a plant-wide repository,
+    this returns an empty dict to match all chunks across the entire plant.
     """
-    clauses: list[dict] = [{"user_id": user_id, "scope": "user"}]
-    if org_id:
-        clauses.append({"org_id": org_id, "scope": "org"})
-    return {"$or": clauses} if len(clauses) > 1 else clauses[0]
+    return {}
 
 
 async def retrieve_all_user_chunks(
@@ -151,11 +144,7 @@ async def _vector_search(
     org_id: Optional[str] = None,
 ) -> list[dict]:
     # Scope filtering is done as a $match stage AFTER $vectorSearch rather than
-    # inside $vectorSearch.filter.  The Atlas filter parameter requires each field
-    # to be explicitly declared in the vector index definition; the $match approach
-    # works with any index configuration.
-    # We request extra candidates so that after the scope filter we still have
-    # enough results to fill the requested limit.
+    # inside $vectorSearch.filter.
     pipeline = [
         {
             "$vectorSearch": {
@@ -165,8 +154,12 @@ async def _vector_search(
                 "numCandidates": limit * 10,
                 "limit": limit * 4,
             }
-        },
-        {"$match": _scope_filter(user_id, org_id)},
+        }
+    ]
+    scope = _scope_filter(user_id, org_id)
+    if scope:
+        pipeline.append({"$match": scope})
+    pipeline.extend([
         {"$limit": limit},
         {
             "$project": {
@@ -179,7 +172,7 @@ async def _vector_search(
                 "score": {"$meta": "vectorSearchScore"},
             }
         },
-    ]
+    ])
     try:
         cursor = db[RAG_CHUNKS_COLLECTION].aggregate(pipeline)
         results = await cursor.to_list(length=limit)
@@ -216,8 +209,12 @@ async def _keyword_search(
         return []
 
     or_text_clauses = [{"text": {"$regex": t, "$options": "i"}} for t in tokens]
-    # Use $and to avoid clobbering $or when scope_filter itself contains $or (multi-scope case)
-    query_filter = {"$and": [_scope_filter(user_id, org_id), {"$or": or_text_clauses}]}
+    
+    scope = _scope_filter(user_id, org_id)
+    if scope:
+        query_filter = {"$and": [scope, {"$or": or_text_clauses}]}
+    else:
+        query_filter = {"$or": or_text_clauses}
 
     logger.info(
         "[RAG RETRIEVER] keyword search: tokens=%s user=%s org=%s",

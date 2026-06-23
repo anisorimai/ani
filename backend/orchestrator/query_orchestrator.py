@@ -1554,18 +1554,14 @@ class QueryOrchestrator:
         """
         Stage 5b — retrieve relevant document chunks from rag_chunks collection.
         Returns (chunks, source_filenames).  Never raises; failures return ([], []).
-        Passes org_id so the retriever can union user-scoped and org-scoped chunks.
         """
-        if not user_id:
-            logger.warning("[RAG] _fetch_rag_chunks called with empty user_id — skipping")
-            return [], []
         db = get_db()
         if db is None:
             logger.warning("[RAG] database unavailable — skipping RAG retrieval")
             return [], []
         logger.info(
             "[RAG] fetching chunks: user=%s org=%s vector=%s query=%r",
-            user_id[:8] + "...", org_id or "none",
+            (user_id[:8] + "...") if user_id else "none", org_id or "none",
             "yes" if query_vector else "no (keyword fallback)",
             query[:60],
         )

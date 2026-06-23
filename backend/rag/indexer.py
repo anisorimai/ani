@@ -41,6 +41,7 @@ from rag.document_store import (
     make_org_doc_id,
     update_document_status,
     upsert_document_record,
+    parse_equipment_and_filename_from_key,
 )
 from rag.embedder import embed_texts
 from rag.extractor import IMAGE_EXTENSIONS, extract_image, extract_text
@@ -57,6 +58,7 @@ async def index_document(
     chunk_overlap: int = 50,
     scope: str = "user",
     org_id: Optional[str] = None,
+    equipment: str = "General",
 ) -> dict:
     """
     Full indexing pipeline for one document.
@@ -66,17 +68,8 @@ async def index_document(
 
     skipped=True means the file was already indexed with the same content hash —
     no embedding API calls were made.
-
-    scope="org" requires org_id to be provided; the doc_id is then keyed by
-    org_id+filename so any admin in the same org re-uploading the same file is
-    idempotent.
     """
-    if scope == "org":
-        if not org_id:
-            raise ValueError("org_id is required when scope='org'")
-        doc_id = make_org_doc_id(org_id, filename)
-    else:
-        doc_id = make_doc_id(user_id, filename)
+    doc_id = make_doc_id(equipment, filename)
 
     file_hash = compute_file_hash(file_bytes)
     file_size = len(file_bytes)
@@ -112,6 +105,7 @@ async def index_document(
         embedding_model=embedding_model,
         scope=scope,
         org_id=org_id,
+        equipment=equipment,
     )
 
     try:
@@ -121,7 +115,7 @@ async def index_document(
         partial_index: bool = False
 
         if ext in IMAGE_EXTENSIONS:
-            storage_key = f"documents/{user_id}/{filename}"
+            storage_key = f"equipment/{equipment}/{filename}"
             text, strategy, image_meta = await extract_image(file_bytes, filename, storage_key)
         else:
             text, strategy = extract_text(file_bytes, filename)
@@ -171,6 +165,7 @@ async def index_document(
             {
                 "doc_id": doc_id,
                 "user_id": user_id,
+                "equipment": equipment,
                 "filename": filename,
                 "chunk_index": i,
                 "chunk_strategy": strategy.value,
@@ -201,12 +196,13 @@ async def index_document(
             partial_index=partial_index,
             scope=scope,
             org_id=org_id,
+            equipment=equipment,
         )
 
         logger.info(
-            "[INDEXER] indexed %s → %d chunks (strategy=%s, embeddings=%s, scope=%s)",
+            "[INDEXER] indexed %s → %d chunks (strategy=%s, embeddings=%s, equipment=%s)",
             filename, len(chunks), strategy.value,
-            "yes" if embedding_model else "no", scope,
+            "yes" if embedding_model else "no", equipment,
         )
         return {
             "doc_id": doc_id,
@@ -232,17 +228,18 @@ async def delete_document(
     filename: str,
     scope: str = "user",
     org_id: Optional[str] = None,
+    equipment: str = "General",
 ) -> int:
     """
     Remove all chunks and the metadata record for a document.
     Returns the number of chunks deleted.
     """
-    if scope == "org" and org_id:
-        doc_id = make_org_doc_id(org_id, filename)
-    else:
-        doc_id = make_doc_id(user_id, filename)
+    if "/" in filename or "\\" in filename:
+        equipment, filename = parse_equipment_and_filename_from_key(f"equipment/{filename}")
+
+    doc_id = make_doc_id(equipment, filename)
 
     chunks_deleted = await delete_document_chunks(db, doc_id)
     await delete_document_record(db, doc_id)
-    logger.info("[INDEXER] deleted %s: %d chunks removed (scope=%s)", filename, chunks_deleted, scope)
+    logger.info("[INDEXER] deleted %s: %d chunks removed (equipment=%s)", filename, chunks_deleted, equipment)
     return chunks_deleted
