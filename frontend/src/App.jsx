@@ -6,6 +6,7 @@ import useAuthStore from './store/useAuthStore';
 import ProtectedRoute from './components/ProtectedRoute';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
+import PharmaCopilotPage from './pages/PharmaCopilotPage';
 
 export default function App() {
   const loadTheme      = useThemeStore((s) => s.loadTheme);
@@ -61,7 +62,20 @@ export default function App() {
       />
 
       <Routes>
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
+        {/* Authenticated users land on the new Pharma Copilot page */}
+        <Route path="/" element={isAuthenticated ? <Navigate to="/copilot" replace /> : <Landing />} />
+
+        {/* ── New: Pharma Copilot landing experience ── */}
+        <Route
+          path="/copilot"
+          element={
+            <ProtectedRoute>
+              <PharmaCopilotPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Classic dashboard — preserved as-is */}
         <Route
           path="/dashboard"
           element={
@@ -70,7 +84,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        {/* All auth flows are handled inside Landing — redirect old routes back to root */}
+
+        {/* All other paths redirect to root */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
