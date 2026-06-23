@@ -123,13 +123,6 @@ export default function ChatWindow() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isRecording, isStreaming, isLoading]);
 
-  /* ── External query trigger (AI suggestion cards) ── */
-  useEffect(() => {
-    const handler = (e) => sendTextAndStream(e.detail.text, 'text');
-    window.addEventListener('voxa:suggest-query', handler);
-    return () => window.removeEventListener('voxa:suggest-query', handler);
-  }, [sendTextAndStream]);
-
   const handleCancelStream = useCallback(() => {
     closeStream();
     if (streamHandleRef.current) {
@@ -195,6 +188,13 @@ export default function ChatWindow() {
       page
     );
   }, [activeConversationId, createConversation, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream, removeLastAssistantMessage]);
+
+  /* ── External query trigger (AI suggestion cards) ── */
+  useEffect(() => {
+    const handler = (e) => sendTextAndStream(e.detail.text, 'text');
+    window.addEventListener('voxa:suggest-query', handler);
+    return () => window.removeEventListener('voxa:suggest-query', handler);
+  }, [sendTextAndStream]);
 
   const handlePageChange = useCallback((newPage, originalQuery) => {
     if (!activeConversationId) return;

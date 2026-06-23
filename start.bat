@@ -100,7 +100,6 @@ set "TMPF=%TEMP%\voxa_frontend.bat"
     echo echo  Press Ctrl+C to stop.
     echo echo.
     echo python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
-    echo pause
 ) > "%TMPB%"
 
 (
@@ -112,18 +111,17 @@ set "TMPF=%TEMP%\voxa_frontend.bat"
     echo echo  Press Ctrl+C to stop.
     echo echo.
     echo npm run dev
-    echo pause
 ) > "%TMPF%"
 
 :: ── Launch backend ────────────────────────────────────────────────
 echo  [INFO]   Starting backend ...
-start "ANI-VOXA Backend"  cmd /k "%TMPB%"
+start "ANI-VOXA Backend"  cmd /c "%TMPB%"
 
 timeout /t 3 /nobreak >nul
 
 :: ── Launch frontend ───────────────────────────────────────────────
 echo  [INFO]   Starting frontend ...
-start "ANI-VOXA Frontend" cmd /k "%TMPF%"
+start "ANI-VOXA Frontend" cmd /c "%TMPF%"
 
 :: ── Open browser after a short delay ─────────────────────────────
 echo  [INFO]   Opening browser in 5 seconds ...
