@@ -1,5 +1,5 @@
 """
-Documents router — file uploads, listing, deletion, and RAG index status.
+Documents router — plant-wide ELT document ingestion and knowledge retrieval.
 
 Upload flow (async indexing):
   1. Validate file type and content
@@ -7,16 +7,19 @@ Upload flow (async indexing):
   3. Kick off RAG indexing in a FastAPI BackgroundTask — returns immediately
   4. Client polls GET /api/documents/index-status to track progress
 
-The background task handles: extract → chunk → embed → store in rag_chunks.
-Index status is tracked in the rag_documents MongoDB collection.
+The background task handles: extract → chunk → embed → store in a single
+plant-wide RAG index. Unit tags are stored as soft metadata only and do not
+create separate indexes or per-unit pipelines.
 """
 
 import logging
+import os
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
-from auth.dependencies import get_admin_user, get_current_user
 from database.mongodb import get_db
 from services.storage_service import get_storage_service
 
@@ -37,7 +40,43 @@ _RAG_SUPPORTED = {
 }
 
 
-async def _run_indexing(user_id: str, filename: str, file_bytes: bytes, equipment: str = "General") -> None:
+def _parse_upload_path(raw_path: str) -> tuple[str, str]:
+    """Split an uploaded path into equipment anchor and filename."""
+    normalized_path = raw_path.replace("\\", "/")
+    parts = [p for p in normalized_path.split("/") if p]
+    if len(parts) > 1:
+        equipment = parts[0]
+        filename = "/".join(parts[1:])
+    else:
+        equipment = "General"
+        filename = parts[0] if parts else "document.pdf"
+    return equipment, filename
+
+
+def _derive_unit_tags(raw_path: str) -> list[str]:
+    """Derive optional unit tags from path segments without creating hierarchy."""
+    normalized_parts = [p.strip().lower() for p in raw_path.replace("\\", "/").split("/") if p.strip()]
+    tag_map = {
+        "manufacturing": "Manufacturing",
+        "qc": "QC",
+        "production": "Production",
+        "engineering": "Engineering",
+    }
+    tags: list[str] = []
+    for part in normalized_parts[:-1]:
+        tag = tag_map.get(part)
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags
+
+
+async def _run_indexing(
+    user_id: str,
+    filename: str,
+    file_bytes: bytes,
+    equipment: str = "General",
+    unit_tags: Optional[list[str]] = None,
+) -> None:
     """Background task: run the full RAG indexing pipeline for one uploaded file."""
     db = get_db()
     if db is None:
@@ -47,10 +86,14 @@ async def _run_indexing(user_id: str, filename: str, file_bytes: bytes, equipmen
         from config.settings import RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP
         from rag.indexer import index_document
         result = await index_document(
-            db, user_id, filename, file_bytes,
+            db,
+            user_id,
+            filename,
+            file_bytes,
             chunk_size=RAG_CHUNK_SIZE,
             chunk_overlap=RAG_CHUNK_OVERLAP,
             equipment=equipment,
+            unit_tags=unit_tags or [],
         )
         logger.info(
             "[DOCUMENTS] indexing complete: %s status=%s chunks=%d skipped=%s",
@@ -60,8 +103,13 @@ async def _run_indexing(user_id: str, filename: str, file_bytes: bytes, equipmen
         logger.error("[DOCUMENTS] background indexing failed for %s: %s", filename, exc, exc_info=True)
 
 
+class QueryRequest(BaseModel):
+    question: str
+    equipment: Optional[str] = None
+
+
 @router.get("/")
-async def list_documents(current_user: dict = Depends(get_current_user)):
+async def list_documents():
     """
     List all documents in the plant-wide equipment repository, joined with RAG index status.
     """
@@ -122,7 +170,6 @@ async def list_documents(current_user: dict = Depends(get_current_user)):
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
 ):
     """
     Upload a document. Saves to storage under equipment folder, then indexes in background.
@@ -138,24 +185,15 @@ async def upload_document(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    user_id = str(current_user["id"])
-    
-    # Parse equipment and filename from folder name
     raw_path = file.filename or ""
-    normalized_path = raw_path.replace("\\", "/")
-    parts = [p for p in normalized_path.split("/") if p]
-    if len(parts) > 1:
-        equipment = parts[0]
-        filename = "/".join(parts[1:])
-    else:
-        equipment = "General"
-        filename = parts[0] if parts else "document.pdf"
+    equipment, filename = _parse_upload_path(raw_path)
+    unit_tags = _derive_unit_tags(raw_path)
 
     key = f"equipment/{equipment}/{filename}"
     stored = get_storage_service().save_bytes(key, content, file.content_type)
 
     if ext in _RAG_SUPPORTED:
-        background_tasks.add_task(_run_indexing, user_id, filename, content, equipment)
+        background_tasks.add_task(_run_indexing, "", filename, content, equipment, unit_tags)
         rag_status = "processing"
     else:
         rag_status = "not_supported"
@@ -171,15 +209,13 @@ async def upload_document(
             "url": stored.url,
             "size": stored.size,
             "updated_at": stored.updated_at.isoformat() if stored.updated_at else None,
+            "unit_tags": unit_tags,
         },
     }
 
 
 @router.delete("/{filename:path}")
-async def delete_document(
-    filename: str,
-    current_user: dict = Depends(get_current_user),
-):
+async def delete_document(filename: str):
     """
     Delete a document from storage and remove all its RAG chunks and metadata.
     """
@@ -223,7 +259,7 @@ async def delete_document(
 
 
 @router.get("/index-status")
-async def get_index_status(current_user: dict = Depends(get_current_user)):
+async def get_index_status():
     """
     Return RAG index health plant-wide.
     """
@@ -237,10 +273,7 @@ async def get_index_status(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/debug")
-async def debug_rag(
-    query: str = "",
-    current_user: dict = Depends(get_current_user),
-):
+async def debug_rag(query: str = ""):
     """
     Debug endpoint — inspect what is stored in rag_chunks plant-wide.
     """
@@ -250,7 +283,6 @@ async def debug_rag(
 
     from rag.document_store import RAG_CHUNKS_COLLECTION, RAG_DOCUMENTS_COLLECTION
 
-    # Count and sample chunks
     total_chunks = await db[RAG_CHUNKS_COLLECTION].count_documents({})
     sample_cursor = db[RAG_CHUNKS_COLLECTION].find(
         {},
@@ -258,7 +290,6 @@ async def debug_rag(
     ).limit(3)
     sample_chunks = await sample_cursor.to_list(length=3)
 
-    # Summarize each chunk
     chunk_preview = []
     for c in sample_chunks:
         has_embedding = c.get("embedding") is not None and len(c.get("embedding", [])) > 0
@@ -272,7 +303,6 @@ async def debug_rag(
             "embedding_dims": len(c.get("embedding") or []),
         })
 
-    # Document records
     doc_cursor = db[RAG_DOCUMENTS_COLLECTION].find(
         {},
         {"_id": 0, "filename": 1, "equipment": 1, "index_status": 1, "chunk_count": 1,
@@ -286,11 +316,9 @@ async def debug_rag(
         "chunk_sample": chunk_preview,
     }
 
-    # Optional: live retrieval test
     if query:
         from orchestrator.semantic_expander import get_query_embedding
         from rag.retriever import retrieve_chunks
-        import os
         query_vector = await get_query_embedding(query) if os.getenv("EMBEDDING_MODEL") else None
         chunks, filenames = await retrieve_chunks(db, query_vector, query, "", top_k=5)
         result["test_query"] = query
@@ -304,73 +332,71 @@ async def debug_rag(
     return result
 
 
-# ── Org-level (shared) document endpoints ─────────────────────────────────────
-# Retained for frontend compatibility, unified behind plant-wide equipment repo.
+@router.post("/query")
+async def query_plant_knowledge(body: QueryRequest):
+    """
+    Query the shared plant knowledge base with optional equipment scoping.
+    """
+    if not body.question or not body.question.strip():
+        raise HTTPException(status_code=400, detail="Question is required")
 
-async def _run_org_indexing(
-    org_id: str, user_id: str, filename: str, file_bytes: bytes, equipment: str = "General"
-) -> None:
-    """Background task: index an admin-uploaded org document."""
     db = get_db()
     if db is None:
-        logger.warning("[DOCUMENTS] org indexing skipped — DB unavailable: %s", filename)
-        return
-    try:
-        from config.settings import RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP
-        from rag.indexer import index_document
-        result = await index_document(
-            db, user_id, filename, file_bytes,
-            chunk_size=RAG_CHUNK_SIZE,
-            chunk_overlap=RAG_CHUNK_OVERLAP,
-            scope="org",
-            org_id=org_id,
-            equipment=equipment,
-        )
-        logger.info(
-            "[DOCUMENTS] org indexing complete: %s status=%s chunks=%d",
-            filename, result["index_status"], result["chunk_count"],
-        )
-    except Exception as exc:
-        logger.error("[DOCUMENTS] org indexing failed for %s: %s", filename, exc, exc_info=True)
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
+    from config.settings import PLANT_NAME, RAG_TOP_K
+    from llm.client import LLMClient
+    from orchestrator.semantic_expander import get_query_embedding
+    from rag.retriever import retrieve_chunks
 
-@router.get("/org")
-async def list_org_documents(admin_user: dict = Depends(get_admin_user)):
-    """
-    List all org-level shared documents, unified behind plant-wide repository.
-    Admin-only.
-    """
-    return await list_documents(current_user=admin_user)
-
-
-@router.post("/org/upload")
-async def upload_org_document(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    admin_user: dict = Depends(get_admin_user),
-):
-    """
-    Upload a shared org-level reference document, unified behind plant-wide repository.
-    """
-    return await upload_document(
-        background_tasks=background_tasks,
-        file=file,
-        current_user=admin_user,
+    query_vector = await get_query_embedding(body.question) if os.getenv("EMBEDDING_MODEL") else None
+    chunks, filenames = await retrieve_chunks(
+        db,
+        query_vector,
+        body.question,
+        "",
+        top_k=RAG_TOP_K,
+        intent="conversational",
     )
 
+    if body.equipment:
+        equipment_filter = body.equipment.strip().lower()
+        chunks = [
+            chunk for chunk in chunks
+            if (chunk.get("equipment") or "").lower() == equipment_filter
+        ]
 
-@router.delete("/org/{filename:path}")
-async def delete_org_document(
-    filename: str,
-    admin_user: dict = Depends(get_admin_user),
-):
-    """
-    Delete a shared org document, unified behind plant-wide repository.
-    """
-    return await delete_document(filename=filename, current_user=admin_user)
+    if not chunks:
+        return {
+            "answer": (
+                "I could not find enough relevant plant knowledge for that question. "
+                "Try a more specific question or upload supporting documents."
+            ),
+            "sources": [],
+            "chunks_used": 0,
+            "equipment": body.equipment,
+        }
 
+    context_blocks = []
+    for idx, chunk in enumerate(chunks[:5], start=1):
+        source = f"{chunk.get('equipment', 'General')} / {chunk.get('filename', 'unknown')}"
+        context_blocks.append(f"[{idx}] Source: {source}\n{chunk.get('text', '')}")
 
-@router.get("/org/index-status")
-async def get_org_index_status(admin_user: dict = Depends(get_admin_user)):
-    """Return RAG index health for shared documents, unified behind plant-wide repository."""
-    return await get_index_status(current_user=admin_user)
+    llm = LLMClient()
+    system_prompt = (
+        f"You are answering questions from the plant knowledge base for {PLANT_NAME}. "
+        "Use only the provided context. If the context is insufficient, say so plainly. "
+        "Do not invent steps, dates, or equipment details. Keep the answer concise and "
+        "reference the source files when helpful."
+    )
+    answer = llm.complete([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Question: {body.question}\n\nContext:\n" + "\n\n".join(context_blocks)},
+    ])
+
+    return {
+        "answer": answer,
+        "sources": filenames,
+        "chunks_used": len(chunks),
+        "equipment": body.equipment,
+    }

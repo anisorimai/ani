@@ -213,6 +213,7 @@ RAG_EQUIPMENT_BOOST: float = float(os.getenv("RAG_EQUIPMENT_BOOST", "1.25"))
 
 # ── LLM Behaviour ────────────────────────────────────────────────────────────
 ASSISTANT_NAME: str = os.getenv("ASSISTANT_NAME", "Voxa")
+PLANT_NAME: str = os.getenv("PLANT_NAME", "ANI Pharmaceuticals Plant")
 
 SYSTEM_PROMPT: str = os.getenv("SYSTEM_PROMPT", f"""\
 You are {ASSISTANT_NAME}, an intelligent AI assistant connected to live enterprise data.

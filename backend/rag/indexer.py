@@ -59,6 +59,7 @@ async def index_document(
     scope: str = "user",
     org_id: Optional[str] = None,
     equipment: str = "General",
+    unit_tags: Optional[list[str]] = None,
 ) -> dict:
     """
     Full indexing pipeline for one document.
@@ -106,6 +107,7 @@ async def index_document(
         scope=scope,
         org_id=org_id,
         equipment=equipment,
+        metadata={"unit_tags": unit_tags or []},
     )
 
     try:
@@ -174,6 +176,7 @@ async def index_document(
                 "indexed_at": now,
                 "scope": scope,
                 "org_id": org_id,
+                "unit_tags": unit_tags or [],
                 **image_meta,  # empty dict for non-images; full metadata for image chunks
             }
             for i, chunk in enumerate(chunks)
@@ -197,6 +200,7 @@ async def index_document(
             scope=scope,
             org_id=org_id,
             equipment=equipment,
+            metadata={"unit_tags": unit_tags or []},
         )
 
         logger.info(
