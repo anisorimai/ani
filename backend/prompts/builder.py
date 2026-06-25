@@ -45,6 +45,7 @@ class PromptContext:
     collections: list[str] = field(default_factory=list)
     doc_counts: dict[str, int] = field(default_factory=dict)   # {collection: matching_count}
     total_counts: dict[str, int] = field(default_factory=dict) # {collection: total_collection_count}
+    scope_restriction: str = ""   # injected when operating in a scoped dashboard (e.g. production)
 
 
 def _retrieval_preamble(ctx: PromptContext) -> str:
@@ -126,6 +127,9 @@ def build_system_prompt(ctx: PromptContext) -> str:
     if GUARDRAILS:
         parts.append("--- GUARDRAILS ---")
         parts.extend(f"- {r}" for r in GUARDRAILS)
+
+    if ctx.scope_restriction:
+        parts.append(f"--- SCOPE RESTRICTION ---\n{ctx.scope_restriction}")
 
     if ctx.data_context.strip():
         preamble = _retrieval_preamble(ctx)

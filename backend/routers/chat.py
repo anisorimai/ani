@@ -57,6 +57,7 @@ async def chat(
             page=body.page,
             user_id=str(current_user.get("id", "")),
             org_id=str(current_user.get("org_id") or ""),
+            dashboard_context=body.dashboard_context,
         )
     except Exception as exc:
         logger.error("Orchestrator error: %s", exc, exc_info=True)
@@ -167,10 +168,11 @@ async def stream(websocket: WebSocket):
             if not message:
                 continue
 
-            conv_id    = data.get("conversation_id", "")
-            history    = data.get("history", [])
-            page       = int(data.get("page", 1))
-            request_id = str(data.get("request_id", "") or "")
+            conv_id           = data.get("conversation_id", "")
+            history           = data.get("history", [])
+            page              = int(data.get("page", 1))
+            request_id        = str(data.get("request_id", "") or "")
+            dashboard_context = str(data.get("dashboard_context", "") or "")
 
             def _frame(payload: dict) -> dict:
                 """Echo the request_id on every frame of this request."""
@@ -193,6 +195,7 @@ async def stream(websocket: WebSocket):
                     page=page,
                     user_id=ws_user_id,
                     org_id=ws_org_id,
+                    dashboard_context=dashboard_context,
                 )
                 token_task = asyncio.create_task(gen.__anext__())
                 inbox_task = asyncio.create_task(inbox.get())

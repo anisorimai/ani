@@ -172,15 +172,16 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 # ── Routers ────────────────────────────────────────────────────────────────────
-from routers import health, auth, chat, speech, history, documents, query  # noqa: E402
+from routers import health, auth, chat, speech, history, documents, query, dashboard  # noqa: E402
 
-app.include_router(health.router, prefix="/api", tags=["Health"])
-app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(chat.router, prefix="/api", tags=["Chat"])
-app.include_router(speech.router, prefix="/api", tags=["Speech"])
-app.include_router(query.router, prefix="/api", tags=["Query"])
-app.include_router(history.router, prefix="/api", tags=["History"])
-app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
+app.include_router(health.router,     prefix="/api",           tags=["Health"])
+app.include_router(auth.router,       prefix="/api/auth",      tags=["Auth"])
+app.include_router(chat.router,       prefix="/api",           tags=["Chat"])
+app.include_router(speech.router,     prefix="/api",           tags=["Speech"])
+app.include_router(query.router,      prefix="/api",           tags=["Query"])
+app.include_router(history.router,    prefix="/api",           tags=["History"])
+app.include_router(documents.router,  prefix="/api/documents", tags=["Documents"])
+app.include_router(dashboard.router,  prefix="/api",           tags=["Dashboard"])
 
 # ── Static uploads ─────────────────────────────────────────────────────────────
 _uploads_dir = DATA_DIR / "uploads"

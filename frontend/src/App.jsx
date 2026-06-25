@@ -5,7 +5,7 @@ import useThemeStore from './store/useThemeStore';
 import useAuthStore from './store/useAuthStore';
 import ProtectedRoute from './components/ProtectedRoute';
 import Landing from './pages/Landing';
-import Dashboard from './pages/Dashboard';
+import PharmaAIPage from './pages/PharmaAIPage';
 
 export default function App() {
   const loadTheme      = useThemeStore((s) => s.loadTheme);
@@ -61,16 +61,18 @@ export default function App() {
       />
 
       <Routes>
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />} />
+        <Route path="/" element={isAuthenticated ? <Navigate to="/ai" replace /> : <Landing />} />
+
         <Route
-          path="/dashboard"
+          path="/ai"
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <PharmaAIPage />
             </ProtectedRoute>
           }
         />
-        {/* All auth flows are handled inside Landing — redirect old routes back to root */}
+
+        {/* All other paths redirect to root */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

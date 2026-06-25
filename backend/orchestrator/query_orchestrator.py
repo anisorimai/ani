@@ -51,11 +51,6 @@ from orchestrator.query_normalizer import QueryMeta, normalize_query
 from orchestrator.reference_resolver import is_followup_query, resolve_references
 from orchestrator.response_composer import StructuredResponse, compose
 from prompts.builder import PromptContext, build_system_prompt as _build_prompt
-from orchestrator.response_composer import (
-    StructuredResponse,
-    build_system_prompt,
-    compose,
-)
 from orchestrator.retrieval_validator import ValidationResult, validate_retrieval
 from orchestrator.semantic_expander import build_search_terms, get_query_embedding
 from orchestrator.session_context import (
@@ -295,6 +290,187 @@ def _build_exact_filter(filters: dict, fields: list[str]) -> dict:
     return resolved
 
 
+def _find_date_field(fields: list) -> Optional[str]:
+    """
+    Detect the primary date field from a collection's field list.
+    Checks known names in priority order, then falls back to any field containing 'date'.
+    """
+    _PRIORITY = [
+        "record_date", "date", "appointment_date", "operation_date",
+        "inspection_date", "billing_date", "scheduled_date", "discharge_date",
+        "admit_date", "created_at", "updated_at", "timestamp",
+    ]
+    fields_lower = {f.lower(): f for f in fields}
+    for name in _PRIORITY:
+        if name in fields_lower:
+            return fields_lower[name]
+    for f in fields:
+        if "date" in f.lower():
+            return f
+    return None
+
+
+def _resolve_time_range_to_filter(time_range: str, date_field: str) -> dict:
+    """
+    Convert a natural-language time_range string into a MongoDB date range filter.
+    Uses datetime.today() as the live reference — no hardcoded dates.
+    Supports: next/last N days/weeks/months/years, this/last week/month/year,
+              today, yesterday, Q1-Q4 YYYY, month-name YYYY, plain year, specific dates.
+    """
+    import calendar as _cal
+    from datetime import date, timedelta
+    import re as _re
+
+    today = date.today()
+    tr = time_range.lower().strip()
+
+    # next N days/weeks/months/years
+    m = _re.match(r"next\s+(\d+)\s+(day|week|month|year)s?", tr)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        start = today + timedelta(days=1)
+        if unit == "day":
+            end = today + timedelta(days=n)
+        elif unit == "week":
+            end = today + timedelta(weeks=n)
+        elif unit == "month":
+            end = today + timedelta(days=n * 30)
+        else:
+            end = today + timedelta(days=n * 365)
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # last/past N days/weeks/months/years
+    m = _re.match(r"(?:last|past)\s+(\d+)\s+(day|week|month|year)s?", tr)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        end = today
+        if unit == "day":
+            start = today - timedelta(days=n)
+        elif unit == "week":
+            start = today - timedelta(weeks=n)
+        elif unit == "month":
+            start = today - timedelta(days=n * 30)
+        else:
+            start = today - timedelta(days=n * 365)
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # today / yesterday
+    if tr == "today":
+        return {date_field: {"$gte": str(today), "$lte": str(today)}}
+    if tr == "yesterday":
+        yd = today - timedelta(days=1)
+        return {date_field: {"$gte": str(yd), "$lte": str(yd)}}
+
+    # this week (Mon–Sun)
+    if tr == "this week":
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # last week / previous week
+    if tr in ("last week", "previous week"):
+        start = today - timedelta(days=today.weekday() + 7)
+        end = start + timedelta(days=6)
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # next week
+    if tr == "next week":
+        start = today + timedelta(days=7 - today.weekday())
+        end = start + timedelta(days=6)
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # this month
+    if tr == "this month":
+        start = today.replace(day=1)
+        end = today.replace(day=_cal.monthrange(today.year, today.month)[1])
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # last month / previous month
+    if tr in ("last month", "previous month"):
+        first_this = today.replace(day=1)
+        end = first_this - timedelta(days=1)
+        start = end.replace(day=1)
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # next month
+    if tr == "next month":
+        if today.month == 12:
+            start = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            start = today.replace(month=today.month + 1, day=1)
+        end = start.replace(day=_cal.monthrange(start.year, start.month)[1])
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # this quarter
+    if tr == "this quarter":
+        q = (today.month - 1) // 3
+        q_start_month = q * 3 + 1
+        q_end_month = q_start_month + 2
+        start = today.replace(month=q_start_month, day=1)
+        end = today.replace(month=q_end_month, day=_cal.monthrange(today.year, q_end_month)[1])
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # this year
+    if tr == "this year":
+        return {date_field: {"$gte": f"{today.year}-01-01", "$lte": f"{today.year}-12-31"}}
+
+    # last year / previous year
+    if tr in ("last year", "previous year"):
+        y = today.year - 1
+        return {date_field: {"$gte": f"{y}-01-01", "$lte": f"{y}-12-31"}}
+
+    # next year
+    if tr == "next year":
+        y = today.year + 1
+        return {date_field: {"$gte": f"{y}-01-01", "$lte": f"{y}-12-31"}}
+
+    # Q1-Q4 YYYY (e.g. "Q2 2026")
+    m = _re.match(r"q([1-4])\s*(\d{4})", tr)
+    if m:
+        q, year = int(m.group(1)), int(m.group(2))
+        q_start_month = (q - 1) * 3 + 1
+        q_end_month = q * 3
+        start = date(year, q_start_month, 1)
+        end = date(year, q_end_month, _cal.monthrange(year, q_end_month)[1])
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # Month name + optional year (e.g. "june 2026", "january")
+    _MONTHS = {
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12,
+    }
+    m = _re.match(r"(" + "|".join(_MONTHS) + r")(?:\s+(\d{4}))?", tr)
+    if m:
+        month_num = _MONTHS[m.group(1)]
+        year = int(m.group(2)) if m.group(2) else today.year
+        start = date(year, month_num, 1)
+        end = date(year, month_num, _cal.monthrange(year, month_num)[1])
+        return {date_field: {"$gte": str(start), "$lte": str(end)}}
+
+    # Plain year (e.g. "2026")
+    m = _re.match(r"^((?:19|20)\d{2})$", tr)
+    if m:
+        year = int(m.group(1))
+        return {date_field: {"$gte": f"{year}-01-01", "$lte": f"{year}-12-31"}}
+
+    # Specific date: DD/MM/YYYY or MM/DD/YYYY (a > 12 forces day-first)
+    m = _re.match(r"(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?", tr)
+    if m:
+        try:
+            a, b = int(m.group(1)), int(m.group(2))
+            year = int(m.group(3)) if m.group(3) else today.year
+            if year < 100:
+                year += 2000
+            d = date(year, b, a) if a > 12 else date(year, a, b)
+            return {date_field: {"$gte": str(d), "$lte": str(d)}}
+        except ValueError:
+            pass
+
+    logger.debug("[TIME_FILTER] unrecognised time_range %r — no date filter applied", time_range)
+    return {}
+
+
 class QueryOrchestrator:
     """
     Stateful orchestrator — initialised once at startup, reused per request.
@@ -368,6 +544,7 @@ class QueryOrchestrator:
         page: int = 1,
         user_id: str = "",
         org_id: str = "",
+        dashboard_context: str = "",
     ) -> StructuredResponse:
         """Non-streaming pipeline. Returns a fully-populated StructuredResponse."""
         pipeline_start = time.perf_counter()
@@ -434,6 +611,9 @@ class QueryOrchestrator:
                     "Answer the user's question based on the knowledge base above. "
                     "If the answer is not present in the documents, say so clearly."
                 )
+            elif dashboard_context in _intents.SCOPED_FAST_PATH:
+                _fp = _intents.SCOPED_FAST_PATH[dashboard_context]
+                system = _fp.get(intent, _fp.get("conversational", _intents.FAST_PATH[intent]))
             else:
                 system = _intents.FAST_PATH[intent]
             msgs = [{"role": "system", "content": system}]
@@ -473,7 +653,7 @@ class QueryOrchestrator:
         #── Stages 3-9: DB pipeline ────────────────────────────────────────────
         result = await self._db_pipeline(
             resolved_query, query_meta, intent, [], session_id, timings, page,
-            user_id=user_id, org_id=org_id,
+            user_id=user_id, org_id=org_id, dashboard_context=dashboard_context,
         )
 
         self._update_context(
@@ -500,6 +680,7 @@ class QueryOrchestrator:
         page: int = 1,
         user_id: str = "",
         org_id: str = "",
+        dashboard_context: str = "",
     ) -> AsyncGenerator[str, None]:
         """Streaming pipeline — yields LLM tokens as they arrive."""
         await self._ensure_ready()
@@ -550,6 +731,9 @@ class QueryOrchestrator:
                     "Answer the user's question based on the knowledge base above. "
                     "If the answer is not present in the documents, say so clearly."
                 )
+            elif dashboard_context in _intents.SCOPED_FAST_PATH:
+                _fp = _intents.SCOPED_FAST_PATH[dashboard_context]
+                system = _fp.get(intent, _fp.get("conversational", _intents.FAST_PATH[intent]))
             else:
                 import prompts.intents as _intents
                 system = _intents.FAST_PATH[intent]
@@ -581,6 +765,8 @@ class QueryOrchestrator:
         # Stage 3: Collection selection
         t3 = time.perf_counter()
         selected = await select_collections(resolved_query, self._metadata, self._llm)
+        if dashboard_context in _intents.SCOPED_COLLECTION:
+            selected = [_intents.SCOPED_COLLECTION[dashboard_context]]
         logger.info("[STAGE 3][STREAM] selected=%s sel_ms=%.0f", selected, _ms(t3))
 
         # Stage 4: Semantic keyword build
@@ -663,9 +849,8 @@ class QueryOrchestrator:
 
             # Short-circuit: simple filtered-count query → answer directly, skip LLM.
             # DB is authoritative for count queries.
-            import sys as _sys
             direct = _try_direct_count_response(analytics_results, query_meta)
-            print(f"[SC-STREAM] direct={direct!r} analytics_keys={list(analytics_results.keys())}", file=_sys.stderr, flush=True)
+            logger.debug("[SC-STREAM] direct=%r analytics_keys=%s", direct, list(analytics_results.keys()))
             if direct is not None:
                 yield direct
                 self._update_context(session_id, query, direct, intent, selected, query_meta)
@@ -911,6 +1096,7 @@ class QueryOrchestrator:
         page: int = 1,
         user_id: str = "",
         org_id: str = "",
+        dashboard_context: str = "",
     ) -> StructuredResponse:
         """Stages 3-9 for the non-streaming path."""
         pipeline_start = time.perf_counter()
@@ -918,6 +1104,8 @@ class QueryOrchestrator:
         # Stage 3: Collection selection
         t3 = time.perf_counter()
         selected = await select_collections(query, self._metadata, self._llm)
+        if dashboard_context in _intents.SCOPED_COLLECTION:
+            selected = [_intents.SCOPED_COLLECTION[dashboard_context]]
         timings["collection_selection_ms"] = _ms(t3)
         logger.info("[STAGE 3] selected=%s", selected)
 
@@ -1250,20 +1438,37 @@ class QueryOrchestrator:
                 fetch_source = "fallback_paginated"
                 had_filter = False
 
-                # ── Priority 1: structured AND filter ────────────────────────
-                if query_meta and query_meta.filters and fields:
-                    pre_filter = _build_exact_filter(query_meta.filters, fields)
-                    if pre_filter:
-                        had_filter = True
-                        docs, total_matching = await self._repo.find_paginated(
-                            name, pre_filter, page=page, page_size=page_size
+                # ── Resolve time-range → MongoDB date filter (dynamic) ───────
+                time_filter: dict = {}
+                if query_meta and getattr(query_meta, "time_range", None) and fields:
+                    _date_field = _find_date_field(fields)
+                    if _date_field:
+                        time_filter = _resolve_time_range_to_filter(
+                            query_meta.time_range, _date_field
                         )
-                        if docs:
-                            fetch_source = "mongodb_filter"
+                        if time_filter:
                             logger.info(
-                                "[FETCH-PAGED] collection=%s filter=%s matched=%d",
-                                name, pre_filter, total_matching,
+                                "[FETCH-PAGED] time_range=%r → %s",
+                                query_meta.time_range, time_filter,
                             )
+
+                # ── Priority 1: structured AND filter (field filters + time range) ──
+                field_filter: dict = {}
+                if query_meta and query_meta.filters and fields:
+                    field_filter = _build_exact_filter(query_meta.filters, fields)
+                combined_filter = {**field_filter, **time_filter}
+
+                if combined_filter:
+                    had_filter = True
+                    docs, total_matching = await self._repo.find_paginated(
+                        name, combined_filter, page=page, page_size=page_size
+                    )
+                    if docs:
+                        fetch_source = "mongodb_filter"
+                        logger.info(
+                            "[FETCH-PAGED] collection=%s filter=%s matched=%d",
+                            name, combined_filter, total_matching,
+                        )
 
                 # ── Priority 2: keyword OR search ─────────────────────────────
                 if not docs and expanded_keywords and fields:
@@ -1278,9 +1483,9 @@ class QueryOrchestrator:
                     if docs:
                         fetch_source = "mongodb_keyword"
 
-                # ── Priority 3: plain sample only when no specific filter was applied ─
-                # If a filter was applied and returned nothing, the requested entity
-                # does not exist — returning unrelated records causes hallucination.
+                # ── Priority 3: fallback scan — only when no filter was applied ──
+                # If any filter (field or time) was applied and returned nothing,
+                # the data doesn't exist for that scope — don't return unrelated records.
                 if not docs and not had_filter:
                     docs, total_matching = await self._repo.find_paginated(
                         name, page=page, page_size=page_size
@@ -1416,6 +1621,20 @@ class QueryOrchestrator:
 
                 # Build a structured filter from query_meta.filters (may be empty)
                 structured_filter = _build_structured_filter(all_fields)
+
+                # Merge time-range filter (dynamic, resolved from query_meta.time_range)
+                if query_meta and getattr(query_meta, "time_range", None):
+                    _sf_date_field = _find_date_field(all_fields)
+                    if _sf_date_field:
+                        _tf = _resolve_time_range_to_filter(
+                            query_meta.time_range, _sf_date_field
+                        )
+                        if _tf:
+                            structured_filter = {**structured_filter, **_tf}
+                            logger.info(
+                                "[FETCH] time_range=%r → %s",
+                                query_meta.time_range, _tf,
+                            )
 
                 if query_vector:
                     docs = await self._repo.vector_search(

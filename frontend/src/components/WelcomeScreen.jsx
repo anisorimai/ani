@@ -1,155 +1,140 @@
 import React from 'react';
 import TextInput from './TextInput';
 import VoiceButton from './VoiceButton';
-import AppLogo from './AppLogo';
 
-const EXAMPLES = [
-  { text: 'How many male, female, and other patients do we have?', icon: '🏥' },
-  { text: 'List all 25 hospitals with their city, state, and bed capacity', icon: '📅' },
-  { text: 'How many quality inspections passed, failed, conditional pass or are under review? What is the average inspection score?', icon: '🩺' },
-  { text: 'List elderly patients above 65', icon: '👴' },
-  { text: 'How many patients have blood type O+?', icon: '👩‍⚕️' },
-  { text: 'How many lab results are flagged as Abnormal?', icon: '🛡️' },
-];
+const DOMAIN_META = {
+  Production: { icon: '🏭', color: '#6366f1', label: 'Production' },
+  Packaging:  { icon: '📦', color: '#0ea5e9', label: 'Packaging'  },
+  Quality:    { icon: '📋', color: '#10b981', label: 'Quality'    },
+  Logistics:  { icon: '🚛', color: '#f59e0b', label: 'Logistics'  },
+  Enterprise: { icon: '📊', color: '#8b5cf6', label: 'Enterprise' },
+};
 
-/* Purple-to-pink gradient sound-wave icon */
-function VoxaIcon({ size = 80 }) {
-  const r  = Math.round(size * 0.22);
-  const bw = Math.round(size * 0.1);
-  const cx = size / 2;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <defs>
-        <linearGradient id="vx-bg" x1="0" y1="0" x2={size} y2={size} gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor="#A855F7" />
-          <stop offset="55%"  stopColor="#D946EF" />
-          <stop offset="100%" stopColor="#EC4899" />
-        </linearGradient>
-      </defs>
-      <rect width={size} height={size} rx={r} fill="url(#vx-bg)" />
-      {/* Left bar  (shorter) */}
-      <rect x={cx - size * 0.28} y={size * 0.35} width={bw} height={size * 0.30} rx={bw / 2} fill="white" opacity="0.85" />
-      {/* Center bar (tallest) */}
-      <rect x={cx - bw / 2}       y={size * 0.22} width={bw} height={size * 0.56} rx={bw / 2} fill="white" />
-      {/* Right bar (shorter) */}
-      <rect x={cx + size * 0.18}  y={size * 0.35} width={bw} height={size * 0.30} rx={bw / 2} fill="white" opacity="0.85" />
-    </svg>
-  );
-}
-
-/* Small circle-arrow avatar shown next to the welcome message */
-function VoxaAvatar({ size = 36 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <circle cx="18" cy="18" r="17" stroke="var(--gold-acc)" strokeWidth="1.5" fill="var(--surf)" opacity="0.9" />
-      <circle cx="18" cy="18" r="11" stroke="var(--gold-acc)" strokeWidth="1.5" fill="none" opacity="0.5" />
-      <path d="M18 22V14M14.5 17.5L18 14l3.5 3.5" stroke="var(--gold-acc)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+const DOMAIN_SUGGESTIONS = {
+  Production: [
+    { icon: '📈', label: 'Batch Status',    text: 'Show current production batch status and any active delays' },
+    { icon: '⚙️', label: 'Equipment',       text: 'Which equipment is under maintenance or has downtime right now?' },
+    { icon: '🎯', label: 'Yield Rate',      text: 'What is the production yield rate for this week?' },
+    { icon: '🕐', label: 'Schedule',        text: 'Show the production schedule for the next 7 days' },
+    { icon: '🧪', label: 'Raw Materials',   text: 'What is the current raw material inventory level?' },
+    { icon: '⚠️', label: 'Bottlenecks',    text: 'Are there any production delays or bottlenecks today?' },
+  ],
+  Packaging: [
+    { icon: '⚡', label: 'Line Efficiency', text: 'How is the packaging line performing right now?' },
+    { icon: '🏷️', label: 'Labelling',       text: 'Are there any labelling errors or compliance issues?' },
+    { icon: '📊', label: 'Fill Rate',        text: 'What is the current fill rate across all packaging lines?' },
+    { icon: '🔧', label: 'Downtime',         text: 'Show packaging line downtime incidents this week' },
+    { icon: '📦', label: 'Materials Stock',  text: 'What packaging materials are running low in stock?' },
+    { icon: '✅', label: 'Compliance',       text: 'Are all packaging operations meeting compliance standards?' },
+  ],
+  Quality: [
+    { icon: '🔬', label: 'Lab Results',     text: 'Show recent lab test results and any out-of-spec items' },
+    { icon: '📋', label: 'Compliance Rate', text: 'What is the quality compliance rate for this week?' },
+    { icon: '⚠️', label: 'Deviations',     text: 'List all open quality deviations and their current status' },
+    { icon: '📌', label: 'CAPA',            text: 'What CAPAs are currently open or overdue?' },
+    { icon: '🏛️', label: 'Audits',          text: 'Show upcoming and recent audit findings' },
+    { icon: '📉', label: 'Defect Trend',    text: 'What is the defect rate trend over the past month?' },
+  ],
+  Logistics: [
+    { icon: '🚛', label: 'Shipments',       text: 'Summarise logistics delays and shipment issues today' },
+    { icon: '📦', label: 'Inventory',       text: 'What is the current warehouse inventory status?' },
+    { icon: '🌡️', label: 'Cold Chain',      text: 'Are there any cold chain temperature excursions to report?' },
+    { icon: '🗺️', label: 'Deliveries',      text: 'Show all pending deliveries and their ETA' },
+    { icon: '⚠️', label: 'Delays',          text: 'Which shipments are delayed and by how much?' },
+    { icon: '📊', label: 'On-Time Rate',    text: 'What is the on-time delivery rate this month?' },
+  ],
+  Enterprise: [
+    { icon: '📊', label: 'Overview',        text: 'Give me an executive overview of all operations today' },
+    { icon: '💰', label: 'Performance',     text: 'What is the overall production efficiency and cost performance?' },
+    { icon: '⚠️', label: 'Critical Issues', text: 'Are there any critical issues across any domain right now?' },
+    { icon: '📈', label: 'Trends',          text: 'Show key performance trends across production, quality, and logistics' },
+    { icon: '🏆', label: 'Compliance',      text: 'What is the overall compliance status across all departments?' },
+    { icon: '🔮', label: 'Forecast',        text: 'What are the production and delivery forecasts for next month?' },
+  ],
+};
 
 export default function WelcomeScreen({
+  domain = 'Production',
   onQueryClick,
   onVoiceClick,
   onTextSend,
   isRecording,
   isBusy,
 }) {
+  const meta        = DOMAIN_META[domain]        || DOMAIN_META.Production;
+  const suggestions = DOMAIN_SUGGESTIONS[domain] || DOMAIN_SUGGESTIONS.Production;
+
   return (
-    <div className="
-      flex flex-col items-center w-full h-full
-      px-3 sm:px-6 md:px-10
-      pt-4 pb-3 overflow-hidden
-    ">
+    <div className="flex flex-col w-full px-4 sm:px-8 md:px-10 pt-6 pb-8 gap-7">
 
-      {/* ── Scrollable centre column ── */}
-      <main className="
-        flex flex-col items-center flex-1 min-h-0 w-full max-w-5xl
-        gap-4 sm:gap-5
-        overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
-        pt-6 sm:pt-10
-      ">
-
-        {/* Icon */}
-        <div className="flex-shrink-0">
-          <AppLogo size={160} />
-        </div>
-
-        {/* Title */}
-        <h1 className="
-          text-gold-gradient-animated font-extrabold tracking-tight text-center leading-tight m-0 flex-shrink-0
-          text-[clamp(1.2rem,3.5vw,2.1rem)]
-        ">
-          VOXA : Voice Enabled AI Assistant
-        </h1>
-
-        {/* "TRY ASKING" label */}
-        <p className="
-          text-[var(--txt2)] text-[0.65rem] sm:text-[0.7rem] font-bold uppercase tracking-[0.18em]
-          text-center m-0 flex-shrink-0
-        ">
-          Try Asking
+      {/* ── Input bar — top of chat ── */}
+      <div className="w-full">
+        <p className="text-[10px] font-bold tracking-widest text-[var(--txt3)] uppercase mb-2">
+          Ask ANI‑VOXA
         </p>
-
-        {/* ── Pill chips — flex-wrap, 3 per row on wide screens ── */}
-        <div className="flex flex-wrap justify-center gap-2 sm:gap-2.5 w-full flex-shrink-0 pb-12 sm:pb-16">
-          {EXAMPLES.map((e, i) => (
-            <button
-              key={i}
-              className="
-                inline-flex items-center gap-1.5 flex-shrink-0
-                rounded-full
-                bg-[var(--surf)] border border-[var(--brd)] text-[var(--txt2)]
-                px-3 py-1.5 sm:px-3.5 sm:py-2
-                text-[0.7rem] sm:text-xs
-                hover:border-gold/40 hover:text-gold hover:bg-[var(--surf-hover)] hover:-translate-y-px
-                transition-all duration-150 cursor-pointer
-                disabled:opacity-35 disabled:cursor-not-allowed disabled:!transform-none
-              "
-              onClick={() => onQueryClick(e.text)}
-              disabled={isBusy}
-            >
-              <span className="text-xs sm:text-sm flex-shrink-0 leading-none">{e.icon}</span>
-              <span className="text-left leading-snug">{e.text}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* ── Welcome message bubble ── */}
-        <div className="flex items-start gap-2.5 sm:gap-3 w-full flex-shrink-0">
-
-          <div className="flex-shrink-0">
-            <VoxaAvatar size={36} />
-          </div>
-
-          <div className="welcome-bubble text-xs sm:text-sm flex-1 min-w-0">
-            Hello! I am{' '}
-            <span className="text-gold-gradient font-semibold">VOXA</span>
-            , your voice-enabled AI assistant designed to help you explore operational data intelligently.
-          </div>
-        </div>
-
-      </main>
-
-      {/* ── Bottom input bar ── */}
-      <footer className="w-full max-w-5xl flex-shrink-0 pt-3">
         <div
           className={`
-            chat-input-row w-full flex items-center gap-2 sm:gap-2.5 relative
+            chat-input-row flex items-center gap-2 relative
             glass-surface rounded-full
             px-3 sm:px-4 py-2.5
-            shadow-[0_4px_16px_rgba(0,0,0,0.3)] transition-all duration-150
-            gradient-border-focus
+            shadow-[0_4px_16px_rgba(0,0,0,0.18)]
+            gradient-border-focus transition-all duration-150
             ${isRecording ? 'recording-pill' : ''}
           `}
         >
           <VoiceButton onRecordComplete={onVoiceClick} disabled={isBusy && !isRecording} />
           <TextInput onSend={onTextSend} disabled={isBusy} />
         </div>
-        <p className="hidden sm:block text-[11px] text-[var(--txt3)] text-center mt-1.5 opacity-70">
-          Press Enter to send · Shift+Enter for new line
+        <p className="hidden md:block text-[11px] text-[var(--txt3)] opacity-50 mt-1.5 ml-1">
+          Press Enter to send · Shift+Enter for new line · Space to toggle voice
         </p>
-      </footer>
+      </div>
+
+      {/* ── Domain badge + greeting ── */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+            style={{ background: `${meta.color}18`, color: meta.color, border: `1px solid ${meta.color}35` }}
+          >
+            <span>{meta.icon}</span>
+            {meta.label} Assistant
+          </span>
+        </div>
+        <h2 className="text-lg font-bold text-[var(--txt)] leading-snug">
+          What would you like to know?
+        </h2>
+        <p className="text-sm text-[var(--txt3)]">
+          This assistant is scoped to <strong>{meta.label}</strong> — pick a prompt or type your own question.
+        </p>
+      </div>
+
+      {/* ── Domain-specific quick prompts ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        {suggestions.map((s) => (
+          <button
+            key={s.label}
+            onClick={() => onQueryClick?.(s.text)}
+            className="
+              flex items-start gap-3 p-3.5 rounded-xl text-left
+              border border-[var(--brd)] bg-[var(--surf)]
+              hover:bg-[var(--brd2)] hover:border-[var(--txt3)]
+              active:scale-[0.98]
+              transition-all duration-150 group
+            "
+          >
+            <span className="text-xl leading-none mt-0.5 flex-shrink-0">{s.icon}</span>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-[var(--txt)] mb-0.5">
+                {s.label}
+              </div>
+              <div className="text-[11px] text-[var(--txt3)] leading-relaxed line-clamp-2">
+                {s.text}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
 
     </div>
   );

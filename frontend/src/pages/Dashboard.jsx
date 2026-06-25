@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import useThemeStore from '../store/useThemeStore';
 import useChatStore from '../store/useChatStore';
 import useUIStore from '../store/useUIStore';
@@ -16,6 +16,7 @@ export default function Dashboard() {
   const loadFromCache = useChatStore((s) => s.loadFromCache);
 
   const [view, setView] = useState('overview'); // 'overview' | 'chat'
+  const scrollContainerRef = useRef(null);
 
   useEffect(() => {
     loadTheme();
@@ -56,7 +57,11 @@ export default function Dashboard() {
               <PharmaPlantDashboard />
             </div>
           )
-          : <ChatWindow />
+          : (
+            <div className="flex-1 overflow-y-auto flex flex-col min-h-0" ref={scrollContainerRef}>
+              <ChatWindow scrollContainerRef={scrollContainerRef} dashboardContext="production" />
+            </div>
+          )
         }
       </div>
     </div>

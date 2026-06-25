@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     conversation_id: str
     history: Optional[list[dict[str, Any]]] = None
     page: int = 1
+    dashboard_context: str = ""
 
 
 class LoginRequest(BaseModel):

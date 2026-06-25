@@ -81,11 +81,12 @@ _ANALYTICS_RE = re.compile(
     r"top\s+\d+|bottom\s+\d+|highest|lowest|maximum|minimum|max|min|"
     r"distribution|breakdown|percentage|percent|rate|ratio|proportion|"
     r"ranking|ranked|most\s+\w+|least\s+\w+|sum\s+of|aggregat|"
-    r"headcount|head\s+count|"
-    r"flagged\s+as|by\s+status|by\s+department|by\s+specialization|"
-    r"most\s+experienced|most\s+common|most\s+frequent|"
+    r"utilization|utilisation|pass\s+rate|fail\s+rate|throughput|"
+    r"by\s+shift|by\s+status|by\s+area|by\s+stage|by\s+severity|by\s+product|"
+    r"alert\s+count|batch\s+count|inspection\s+count|deviation\s+count|"
+    r"most\s+common|most\s+frequent|"
     r"how\s+many\s+\w+\s+(are|have|is|were)|"
-    r"total\s+(billing|amount|revenue|cost|count|number))\b",
+    r"total\s+(units|batches|alerts|inspections|deviations|ncrs|capas|count|number))\b",
     re.I,
 )
 

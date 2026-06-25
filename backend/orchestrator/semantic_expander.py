@@ -45,51 +45,95 @@ logger = logging.getLogger("voxa.orchestrator.semantic")
 # Mellitus", "cardiac" matches "Cardiology" and cardiac-related diagnoses).
 
 _DOMAIN_SYNONYMS: dict[str, list[str]] = {
-    # ── Medical conditions ──────────────────────────────────────────────────
-    "diabetic":      ["diabetes", "mellitus", "insulin", "metformin", "antidiabetic"],
-    "diabetes":      ["diabetic", "mellitus", "insulin", "metformin", "antidiabetic"],
-    "sugar":         ["diabetes", "glucose", "hyperglycemia", "insulin", "mellitus"],
-    "cardiac":       ["cardiology", "cardiovascular", "myocardial", "coronary", "atrial"],
-    "heart":         ["cardiology", "cardiovascular", "myocardial", "coronary", "cardiac"],
-    "kidney":        ["renal", "nephrology", "glomerular", "nephritis", "uremia"],
-    "renal":         ["kidney", "nephrology", "glomerular", "nephritis"],
-    "breathing":     ["respiratory", "pulmonary", "pneumonia", "asthma", "COPD"],
-    "respiratory":   ["pulmonary", "pneumonia", "asthma", "COPD", "breathing"],
-    "lung":          ["pulmonary", "respiratory", "pneumonia", "COPD", "asthma"],
-    "mental":        ["psychiatric", "psychiatry", "anxiety", "depression", "psychological"],
-    "psychiatric":   ["psychiatry", "anxiety", "depression", "mental", "psychological"],
-    "anxiety":       ["psychiatric", "GAD", "anxiety", "psychological", "mental"],
-    "cancer":        ["oncology", "tumor", "carcinoma", "malignant", "chemotherapy"],
-    "oncology":      ["cancer", "tumor", "carcinoma", "malignant"],
-    "bone":          ["orthopedic", "fracture", "osteoporosis", "arthritis", "rheumatology"],
-    "arthritis":     ["rheumatology", "joint", "autoimmune", "inflammation"],
-    "hypertension":  ["blood pressure", "cardiovascular", "antihypertensive", "systolic"],
-    "neurological":  ["neurology", "seizure", "epilepsy", "stroke", "migraine"],
-    "infectious":    ["infection", "sepsis", "bacteria", "antibiotic", "microbiology"],
-    # ── Drugs / pharmacy ───────────────────────────────────────────────────
-    "blood thinner": ["anticoagulant", "antiplatelet", "warfarin", "heparin", "clopidogrel"],
-    "anticoagulant": ["warfarin", "heparin", "clopidogrel", "antiplatelet"],
-    "antidiabetic":  ["metformin", "insulin", "diabetes", "hypoglycemic"],
-    "medicines":     ["drugs", "medication", "pharmaceutical", "prescription"],
-    "medicine":      ["drug", "medication", "pharmaceutical", "prescription"],
-    "drugs":         ["medication", "pharmaceutical", "drug", "prescription", "catalog"],
-    "pharmaceuticals": ["drugs", "medication", "catalog", "compound", "dosage"],
-    # ── Workforce / staff ───────────────────────────────────────────────────
-    "staff":         ["employees", "personnel", "workforce", "headcount"],
-    "workforce":     ["employees", "personnel", "staff", "headcount"],
-    "workers":       ["employees", "personnel", "staff"],
-    "headcount":     ["employees", "personnel", "staff", "workforce"],
-    # ── Manufacturing / equipment ───────────────────────────────────────────
-    "machine":       ["machinery", "equipment", "operational", "mechanical"],
-    "machines":      ["machinery", "equipment", "operational"],
-    "equipment":     ["machinery", "machines", "apparatus", "device"],
-    "maintenance":   ["repair", "downtime", "operational", "machinery", "logs"],
-    "plant":         ["facility", "manufacturing", "production", "factory"],
-    "manufacturing": ["plant", "production", "facility", "operations", "machinery"],
-    # ── Finance / billing ───────────────────────────────────────────────────
-    "revenue":       ["billing", "amount", "total", "payment", "invoice"],
-    "invoice":       ["billing", "amount", "total", "payment", "bill"],
-    "payment":       ["billing", "amount", "paid", "invoice", "financial"],
+    # ── Production — output & KPIs ─────────────────────────────────────────
+    "units":         ["total_units_produced", "units_target", "production"],
+    "output":        ["total_units_produced", "units_target", "produced"],
+    "produced":      ["total_units_produced", "production"],
+    "capacity":      ["capacity_utilization_pct", "utilization"],
+    "utilization":   ["capacity_utilization_pct", "capacity"],
+    "efficiency":    ["capacity_utilization_pct", "on_time_delivery_pct"],
+    "delivery":      ["on_time_delivery_pct", "on_time"],
+    "issues":        ["open_issues_count"],
+    "throughput":    ["total_units_produced", "capacity_utilization_pct"],
+    # ── Production — shifts ────────────────────────────────────────────────
+    "shift":         ["morning", "afternoon", "night", "shift"],
+    "shifts":        ["morning", "afternoon", "night", "shift"],
+    "morning":       ["shift", "Morning"],
+    "afternoon":     ["shift", "Afternoon"],
+    "night":         ["shift", "Night"],
+    # ── Production — batches ───────────────────────────────────────────────
+    "batch":         ["batch_status", "total_batches", "batches_completed"],
+    "batches":       ["batch_status", "total_batches", "batches_completed"],
+    "completed":     ["batches_completed", "Completed", "batch_status"],
+    "in-progress":   ["batches_in_progress", "In Progress"],
+    "pending":       ["batches_pending", "Pending"],
+    "on-hold":       ["batches_on_hold", "On Hold"],
+    "hold":          ["batches_on_hold", "On Hold"],
+    # ── Production — areas ────────────────────────────────────────────────
+    "granulation":   ["area_granulation_units", "granulator_speed_rpm"],
+    "compression":   ["area_compression_units", "compression_force_kn"],
+    "coating":       ["area_coating_units", "coater_inlet_temp_celsius"],
+    "packaging":     ["area_packaging_units"],
+    "area":          ["area_granulation_units", "area_compression_units", "area_coating_units", "area_packaging_units"],
+    # ── Production — equipment parameters ─────────────────────────────────
+    "granulator":    ["granulator_speed_rpm", "rpm", "granulation"],
+    "rpm":           ["granulator_speed_rpm", "granulator"],
+    "coater":        ["coater_inlet_temp_celsius", "temperature"],
+    "temperature":   ["coater_inlet_temp_celsius"],
+    "humidity":      ["humidity_pct_rh"],
+    "pressure":      ["differential_pressure_pa"],
+    "toc":           ["water_system_toc_ppb"],
+    "water":         ["water_system_toc_ppb"],
+    # ── Production — alerts ────────────────────────────────────────────────
+    "alert":         ["alert_high_count", "alert_medium_count", "alert_low_count"],
+    "alerts":        ["alert_high_count", "alert_medium_count", "alert_low_count"],
+    "high":          ["alert_high_count", "high_count"],
+    "medium":        ["alert_medium_count"],
+    "low":           ["alert_low_count"],
+    # ── Production — activities ────────────────────────────────────────────
+    "calibration":   ["activity_equipment_calibration_due"],
+    "maintenance":   ["activity_preventive_maintenance_due"],
+    "changeover":    ["activity_changeover_scheduled"],
+    "qc":            ["activity_qc_review_time", "inspection"],
+    # ── Quality — inspections ─────────────────────────────────────────────
+    "inspection":    ["inspection_result", "inspection_score", "inspection_stage"],
+    "inspections":   ["inspection_result", "inspection_score", "inspection_stage"],
+    "pass":          ["inspection_result", "Pass"],
+    "fail":          ["inspection_result", "Fail"],
+    "failed":        ["inspection_result", "Fail"],
+    "passed":        ["inspection_result", "Pass"],
+    "score":         ["inspection_score", "audit_score_pct"],
+    "incoming":      ["inspection_stage", "Incoming"],
+    "stability":     ["inspection_stage", "Stability"],
+    # ── Quality — deviations ───────────────────────────────────────────────
+    "deviation":     ["deviation_severity", "deviation_critical_count", "deviation_major_count", "deviation_minor_count"],
+    "deviations":    ["deviation_severity", "deviation_critical_count", "deviation_major_count"],
+    "critical":      ["deviation_critical_count", "capa_critical_count", "Critical"],
+    "major":         ["deviation_major_count", "capa_major_count", "Major"],
+    "minor":         ["deviation_minor_count", "Minor"],
+    "defect":        ["deviation_severity", "deviation_critical_count"],
+    # ── Quality — NCRs ────────────────────────────────────────────────────
+    "ncr":           ["open_ncrs_count"],
+    "ncrs":          ["open_ncrs_count"],
+    "nonconformance": ["open_ncrs_count", "deviation_severity"],
+    "nonconformances": ["open_ncrs_count"],
+    # ── Quality — CAPA ────────────────────────────────────────────────────
+    "capa":          ["capa_pending_count", "capa_critical_count", "capa_major_count"],
+    "capas":         ["capa_pending_count", "capa_critical_count"],
+    "corrective":    ["capa_pending_count", "capa_critical_count"],
+    "preventive":    ["capa_pending_count", "capa_major_count"],
+    # ── Quality — audits ──────────────────────────────────────────────────
+    "audit":         ["audit_score_pct", "previous_audit_score_pct"],
+    "audits":        ["audit_score_pct", "audit1_name", "audit2_name"],
+    "gmp":           ["audit_score_pct", "compliance"],
+    "compliance":    ["audit_score_pct", "deviation_severity", "inspection_result"],
+    # ── General manufacturing ──────────────────────────────────────────────
+    "plant":         ["production", "manufacturing"],
+    "manufacturing": ["production", "total_units_produced"],
+    "product":       ["product_name"],
+    "products":      ["product_name"],
+    "quality":       ["inspection_result", "inspection_score", "audit_score_pct"],
+    "performance":   ["capacity_utilization_pct", "on_time_delivery_pct", "inspection_score"],
 }
 
 
@@ -109,20 +153,29 @@ def _static_expand(query: str, keywords: list[str]) -> list[str]:
 # ── LLM expansion ─────────────────────────────────────────────────────────────
 
 _EXPAND_SYSTEM = """\
-You are a search query expander for an enterprise analytics database.
-Given a user question, output ONLY a comma-separated list of 5-8 single-word
-search terms — synonyms, abbreviations, and domain-specific vocabulary that
-would help find relevant records.
+You are a search query expander for a pharmaceutical manufacturing plant analytics database.
+The database contains production data (units produced, batch status, shifts, equipment parameters,
+alerts, capacity utilization) and quality data (inspection results, deviations, NCRs, CAPAs,
+audit scores, product names).
+
+Given a user question, output ONLY a comma-separated list of 5-8 single-word search terms —
+synonyms, abbreviations, and pharma/manufacturing domain vocabulary that would help find records.
 
 Rules:
 - Single words only (no phrases)
 - Do NOT repeat words already in the query
 - Do NOT output sentences or explanations
-- Cover alternative phrasings and domain jargon
+- Cover pharma-specific jargon and field name fragments
 
-Example
-  Input : "show me top 3 products by revenue this quarter"
-  Output: sales, earnings, income, best, ranking, items, goods, turnover
+Examples:
+  Input : "what is the batch completion rate this week"
+  Output: completed, batches_completed, total_batches, status, production, finished
+
+  Input : "show inspection failures by product"
+  Output: fail, failed, inspection_result, product_name, quality, score
+
+  Input : "how many critical deviations and open NCRs"
+  Output: deviation_critical, open_ncrs_count, nonconformance, capa, severity, quality
 """
 
 

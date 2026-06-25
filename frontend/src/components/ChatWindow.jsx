@@ -22,7 +22,7 @@ function isNearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
 }
 
-export default function ChatWindow() {
+export default function ChatWindow({ scrollContainerRef, domain = 'Production', dashboardContext = '' }) {
   /* ── DOM refs ── */
   const messagesContainerRef = useRef(null);   // scroll container
   const messagesEndRef       = useRef(null);   // invisible sentinel at the bottom
@@ -81,10 +81,18 @@ export default function ChatWindow() {
    * we don't hijack their scroll position.
    */
   const handleScroll = useCallback(() => {
-    const nearBottom = isNearBottom(messagesContainerRef.current);
+    const nearBottom = isNearBottom(scrollContainerRef?.current);
     shouldAutoScrollRef.current = nearBottom;
     setShowScrollBottom(!nearBottom);
-  }, []);
+  }, [scrollContainerRef]);
+
+  // Attach scroll listener to the outer page scroll container
+  useEffect(() => {
+    const el = scrollContainerRef?.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [scrollContainerRef, handleScroll]);
 
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
@@ -185,9 +193,17 @@ export default function ChatWindow() {
         streamHandleRef.current = null;
       },
       priorHistory,
-      page
+      page,
+      dashboardContext
     );
   }, [activeConversationId, createConversation, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream, removeLastAssistantMessage]);
+
+  /* ── External query trigger (AI suggestion cards) ── */
+  useEffect(() => {
+    const handler = (e) => sendTextAndStream(e.detail.text, 'text');
+    window.addEventListener('voxa:suggest-query', handler);
+    return () => window.removeEventListener('voxa:suggest-query', handler);
+  }, [sendTextAndStream]);
 
   const handlePageChange = useCallback((newPage, originalQuery) => {
     if (!activeConversationId) return;
@@ -310,39 +326,39 @@ export default function ChatWindow() {
         });
         streamHandleRef.current = null;
       },
-      history.slice(0, -1) // Send history excluding the message we just updated as 'current query'
+      history.slice(0, -1), // Send history excluding the message we just updated as 'current query'
+      1,
+      dashboardContext
     );
   }, [activeConversationId, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream]);
 
-  // Welcome screen (no messages)
+  // Welcome screen (no messages) — flows with the page, no inner scroll
   if (!hasMessages) {
     return (
-      <div className="flex flex-col flex-1 h-full overflow-hidden" id="chat-window">
-        <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col" ref={messagesContainerRef} onScroll={handleScroll}>
-          <WelcomeScreen
-            onQueryClick={handleQueryClick}
-            onVoiceClick={handleVoiceToggle}
-            onTextSend={handleTextSend}
-            isRecording={isRecording}
-            isTranscribing={isTranscribing}
-            isBusy={isBusy}
-          />
-        </div>
+      <div className="flex flex-col" id="chat-window">
+        <WelcomeScreen
+          domain={domain}
+          onQueryClick={handleQueryClick}
+          onVoiceClick={handleVoiceToggle}
+          onTextSend={handleTextSend}
+          isRecording={isRecording}
+          isTranscribing={isTranscribing}
+          isBusy={isBusy}
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col flex-1 h-full overflow-hidden" id="chat-window">
-      {/* Messages scroll area */}
+    <div className="flex flex-col" id="chat-window">
+      {/* Messages area — no inner scroll; outer page container scrolls */}
       <div
-        className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col"
+        className="flex flex-col"
         id="chat-messages"
         ref={messagesContainerRef}
-        onScroll={handleScroll}
       >
-        {/* Responsive padding: tight on mobile, comfortable on desktop */}
-        <div className="flex-1 flex flex-col py-4 px-2 sm:py-6 sm:px-4 md:px-8 gap-2 max-w-[1200px] w-full mx-auto">
+        {/* pb-32 keeps the last message clear of the sticky input bar */}
+        <div className="flex flex-col py-4 px-2 sm:py-6 sm:px-4 md:px-8 gap-2 max-w-[1200px] w-full mx-auto pb-32">
 
 
           {messages.map((msg, idx) => (
@@ -372,23 +388,26 @@ export default function ChatWindow() {
           {isLoading && !isStreaming && <TypingIndicator />}
           <div ref={messagesEndRef} />
         </div>
-
-        {showScrollBottom && (
-          <button
-            onClick={scrollToBottom}
-            className="fixed bottom-[100px] right-4 sm:right-6 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[var(--surf)] border border-gold/[0.4] text-[#3B82F6] shadow-[0_4px_12px_rgba(0,0,0,0.4)] flex items-center justify-center hover:bg-[var(--surf-hover)] active:scale-90 transition-all duration-200 animate-fade-in"
-            title="Scroll to bottom"
-          >
-            <HiArrowDown size={16} />
-          </button>
-        )}
       </div>
 
-      {/* Input bar — safe-area aware, responsive padding */}
+      {/* Scroll-to-bottom button */}
+      {showScrollBottom && (
+        <button
+          onClick={scrollToBottom}
+          className="fixed bottom-[100px] right-4 sm:right-6 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[var(--surf)] border border-gold/[0.4] text-[#3B82F6] shadow-[0_4px_12px_rgba(0,0,0,0.4)] flex items-center justify-center hover:bg-[var(--surf-hover)] active:scale-90 transition-all duration-200 animate-fade-in"
+          title="Scroll to bottom"
+        >
+          <HiArrowDown size={16} />
+        </button>
+      )}
+
+      {/* Input bar — sticky at bottom, safe-area aware */}
       <div
         className="
-          flex-shrink-0 bg-transparent flex flex-col items-center gap-2 w-full z-10
+          sticky bottom-0 z-10
+          bg-[var(--bg)] flex flex-col items-center gap-2 w-full
           px-3 sm:px-5 md:px-8
+          pt-2
           pb-[calc(10px+env(safe-area-inset-bottom,0px))] sm:pb-4
         "
         id="chat-input-area"

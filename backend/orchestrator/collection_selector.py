@@ -15,9 +15,9 @@ from llm.client import LLMClient
 logger = logging.getLogger("voxa.orchestrator.selector")
 
 _SELECTION_SYSTEM = """\
-You are a database routing assistant. Given a user question and a list of MongoDB collections \
-with their field names, return the names of the 1-4 collections MOST LIKELY to contain the data \
-needed to answer the question.
+You are a database routing assistant for ANI Pharmaceuticals. Given a user question and a list \
+of MongoDB collections with their field names, return the names of the 1-4 collections MOST \
+LIKELY to contain the data needed to answer the question.
 
 IMPORTANT: Use the EXACT collection names from the catalog below — do not invent or shorten names.
 
@@ -27,34 +27,23 @@ Rules:
 - If none look relevant, return an empty response.
 
 Domain routing — use the catalog field list to find the right collection:
-- Patient diseases, diagnoses, medical conditions (diabetes, hypertension, cancer, etc.) \
-→ pick the collection that has a 'diagnosis' field (NOT the patient demographics collection)
-- Doctor details, physician profiles, active doctors, doctor count, specialisation, years of experience \
-→ pick the collection with 'specialization' or 'years_experience' fields (NOT the patients collection)
-- Hospital capacity, ICU beds, ER beds, total beds → pick the collection with 'icu_beds' or 'total_beds' fields
-- Drug catalogue, drug names, pharmaceutical products, medicines manufactured \
-→ pick the collection with 'drug_name' or 'category' fields (NOT the prescriptions collection)
-- Drug prescriptions, medications given to patients, dosage → pick the collection with 'dosage' or 'drug_id' fields
-- Lab tests, test results, blood work → pick the collection with 'test_name' or 'result' fields
-- Bills, payments, insurance claims → pick the collection with 'total_amount' or 'payment_method' fields
-- Production efficiency, shift output, energy usage, operations by production line, breakdown of operations → pick the collection with 'efficiency', 'units_produced', or 'production_line' fields
-- Machine maintenance, repair, downtime → pick the collection with 'downtime_hours' or 'maintenance_type' fields
-- Quality inspections, defect rates, QC scores → pick the collection with 'inspection_type' or 'deviations_found' fields
-- Inventory, stock, raw materials, expiry → pick the collection with 'movement_type' or 'batch_number' fields
-- Employee records, salaries, departments → pick the collection with 'department' or 'salary' fields
-- Audit trail, access logs, compliance → pick the collection with 'action' and 'entity_type' fields
+- Production output, units produced, shifts (Morning/Afternoon/Night), capacity utilization, \
+  on-time delivery, batch IDs, batch status (Completed/In Progress/Pending/On Hold), \
+  production areas (granulation, compression, coating, packaging), equipment parameters \
+  (granulator speed, coater temperature, compression force, humidity, differential pressure, TOC), \
+  alerts (high/medium/low), scheduled activities (calibration, maintenance, changeover, QC review) \
+  → pick the collection with 'total_units_produced', 'batch_status', or 'shift' fields
+- Quality inspections (pass/fail/score), inspection stage (Incoming/In-Process/Stability), \
+  deviations (critical/major/minor), NCRs (non-conformance reports), CAPA \
+  (corrective and preventive actions), audit scores, upcoming audits, product names, \
+  batch quality records \
+  → pick the collection with 'inspection_result', 'inspection_score', or 'open_ncrs_count' fields
 
 CRITICAL DISAMBIGUATION — these rules OVERRIDE everything above:
-- Query mentions "doctor", "doctors", "physician", or "physicians" → NEVER select the patients collection.
-- Query mentions "patient" or "patients" (not in compound like "patient_id in billing") → NEVER select the doctors/physicians collection.
-- Query mentions "drug", "drugs", "medicine", "medicines", "medication", "medications", \
-"pharmaceutical", or "pharmaceuticals" as the subject → pick the collection with 'drug_name' or \
-'category' fields. NEVER select the prescriptions collection for the drug catalog.
-- Query mentions "employee", "employees", "staff", "workforce", "workers", "worker", \
-"personnel", or "headcount" → select the employees collection (has 'department' or 'salary' fields). \
-NEVER select patients for these terms.
-- Query mentions "machine", "machines", "equipment", or "machinery" → select the machinery \
-collection (has 'downtime_hours' or 'maintenance_type' fields).
+- Query about production volumes, output, units, shifts, capacity, batch runs, equipment parameters, \
+  or operational alerts → ALWAYS select the production_dashboard collection.
+- Query about inspections, pass/fail rates, deviations, NCRs, CAPAs, audit scores, or product \
+  quality compliance → ALWAYS select the quality_dashboard collection.
 - Always choose the collection whose name directly matches the primary entity in the question.
 """
 
@@ -93,30 +82,46 @@ _STOP_WORDS = {
 # Handles semantic gaps where heuristic scoring fails because the query uses
 # a synonym that doesn't appear in any collection name or field list.
 _QUERY_SYNONYMS: dict[str, list[str]] = {
-    # Equipment / Machinery
-    "machine": ["machinery"],
-    "machines": ["machinery"],
-    "equipment": ["machinery"],
-    "equipments": ["machinery"],
-    # Staff / Employees
-    "staff": ["employee", "employees"],
-    "workforce": ["employee", "employees"],
-    "workers": ["employee", "employees"],
-    "worker": ["employee", "employees"],
-    "personnel": ["employee", "employees"],
-    "headcount": ["employee", "employees"],
-    # Pharmaceuticals / Drugs
-    "medicine": ["drug", "pharmaceutical"],
-    "medicines": ["drug", "pharmaceutical"],
-    "pharmaceutical": ["drug"],
-    "pharmaceuticals": ["drug"],
-    "medication": ["drug"],
-    "medications": ["drug"],
-    # Medical condition synonyms
-    "sugar": ["diabetes", "glucose", "antidiabetic"],
-    "thinners": ["anticoagulant"],
-    "thinner": ["anticoagulant"],
-    "breathing": ["respiratory", "pulmonary"],
+    # Production dashboard terms
+    "batch":           ["production", "batch_status", "batches_completed"],
+    "batches":         ["production", "batch_status", "total_batches"],
+    "shift":           ["production", "morning", "afternoon", "night"],
+    "shifts":          ["production", "shift"],
+    "granulation":     ["production", "granulator", "area_granulation"],
+    "compression":     ["production", "area_compression"],
+    "coating":         ["production", "coater", "area_coating"],
+    "packaging":       ["production", "area_packaging"],
+    "units":           ["production", "total_units_produced", "units_target"],
+    "output":          ["production", "total_units_produced"],
+    "capacity":        ["production", "capacity_utilization_pct"],
+    "utilization":     ["production", "capacity_utilization_pct"],
+    "throughput":      ["production", "total_units_produced"],
+    "alerts":          ["production", "alert_high_count", "alert_medium_count"],
+    "alert":           ["production", "alert_high_count"],
+    "maintenance":     ["production", "activity_preventive_maintenance_due"],
+    "calibration":     ["production", "activity_equipment_calibration_due"],
+    "changeover":      ["production", "activity_changeover_scheduled"],
+    "toc":             ["production", "water_system_toc_ppb"],
+    "humidity":        ["production", "humidity_pct_rh"],
+    # Quality dashboard terms
+    "inspection":      ["quality", "inspection_result", "inspection_score"],
+    "inspections":     ["quality", "inspection_result"],
+    "deviation":       ["quality", "deviation_critical_count", "deviation_severity"],
+    "deviations":      ["quality", "deviation_major_count", "deviation_minor_count"],
+    "ncr":             ["quality", "open_ncrs_count"],
+    "ncrs":            ["quality", "open_ncrs_count"],
+    "capa":            ["quality", "capa_pending_count", "capa_critical_count"],
+    "capas":           ["quality", "capa_pending_count"],
+    "audit":           ["quality", "audit_score_pct", "audit1_name"],
+    "audits":          ["quality", "audit_score_pct"],
+    "gmp":             ["quality", "audit_score_pct"],
+    "compliance":      ["quality", "audit_score_pct"],
+    "pass":            ["quality", "inspection_result"],
+    "fail":            ["quality", "inspection_result"],
+    "defect":          ["quality", "deviation_severity"],
+    "nonconformance":  ["quality", "open_ncrs_count"],
+    "corrective":      ["quality", "capa_pending_count"],
+    "preventive":      ["quality", "capa_pending_count"],
 }
 
 
@@ -136,12 +141,12 @@ def _terms(query: str) -> list[str]:
 # When any query term from the first set appears, collections whose name contains
 # the exclusion substring are penalised heavily so they cannot win.
 _CROSS_ENTITY_EXCLUSIONS: list[tuple[frozenset[str], str]] = [
-    (frozenset({"doctor", "doctors", "physician", "physicians"}), "patient"),
-    (frozenset({"patient", "patients"}), "doctor"),
-    (frozenset({"patient", "patients"}), "physician"),
-    (frozenset({"employee", "employees", "staff", "worker", "workers",
-                "workforce", "personnel", "headcount"}), "patient"),
-    (frozenset({"machine", "machines", "equipment", "machinery"}), "patient"),
+    # Production-specific queries must not bleed into quality
+    (frozenset({"shift", "granulation", "compression", "coating", "granulator",
+                "coater", "changeover", "toc"}), "quality"),
+    # Quality-specific queries must not bleed into production
+    (frozenset({"inspection", "deviation", "ncr", "capa", "audit", "nonconformance",
+                "conformance", "corrective", "preventive"}), "production"),
 ]
 
 

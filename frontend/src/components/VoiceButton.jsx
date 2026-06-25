@@ -45,7 +45,7 @@ export default function VoiceButton({ onRecordComplete, disabled = false }) {
               transition-all duration-200 border-none outline-none
               disabled:opacity-40 disabled:cursor-not-allowed disabled:!transform-none disabled:!animate-none
               ${state === 'idle'
-                ? 'bg-gold-gradient shadow-[0_4px_24px_rgba(59,130,246,0.35)] hover:scale-[1.06] active:scale-95'
+                ? 'bg-[#3B82F6] shadow-[0_2px_12px_rgba(59,130,246,0.4)] hover:bg-[#2563EB] hover:scale-[1.06] active:scale-95'
                 : 'bg-red-500 shadow-[0_4px_28px_rgba(239,68,68,0.4)] animate-pulse-beat'}
             `}
             style={{ borderRadius: '9999px' }}

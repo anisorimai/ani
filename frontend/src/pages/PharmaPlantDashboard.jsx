@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useProductionData } from "../hooks/useProductionData";
+import { useQualityData } from "../hooks/useQualityData";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
@@ -17,61 +19,218 @@ const T = {
   pink: { solid: "#db2777", light: "#fce7f3", text: "#be185d" },
 };
 
-// ─── DATA ─────────────────────────────────────────────────────────────────────
-const KPI_CARDS = [
-  { id: "production", label: "Today's Production", value: "1.25M", unit: "Units", delta: "+8.4% vs target",    deltaPositive: true,  sparkData: [8,12,9,15,11,14,18,16,20],   iconType: "factory",  iconBg: "#ede9fe", iconColor: "#6366f1", gradientA: "#6366f1", gradientB: "#818cf8" },
-  { id: "capacity",   label: "Capacity Utilization",value: "68%",   unit: null,   delta: "+5.6% vs yesterday", deltaPositive: true,  sparkData: [55,60,58,62,59,65,63,67,68], iconType: "box",      iconBg: "#e0f2fe", iconColor: "#0ea5e9", gradientA: "#0ea5e9", gradientB: "#38bdf8" },
-  { id: "quality",    label: "Quality Pass Rate",   value: "98.6%", unit: null,   delta: "+1.3% vs yesterday", deltaPositive: true,  sparkData: [96,97,96,98,97,99,98,98,99], iconType: "shield",   iconBg: "#d1fae5", iconColor: "#10b981", gradientA: "#10b981", gradientB: "#34d399" },
-  { id: "batch",      label: "Batch Success Rate",  value: "96.2%", unit: null,   delta: "+2.1% vs yesterday", deltaPositive: true,  sparkData: [92,94,91,95,93,96,95,97,96], iconType: "check",    iconBg: "#ede9fe", iconColor: "#8b5cf6", gradientA: "#8b5cf6", gradientB: "#a78bfa" },
-  { id: "delivery",   label: "On Time Delivery",    value: "92%",   unit: null,   delta: "+3.4% vs yesterday", deltaPositive: true,  sparkData: [85,88,87,90,89,91,90,92,92], iconType: "truck",    iconBg: "#fef3c7", iconColor: "#f59e0b", gradientA: "#f59e0b", gradientB: "#fbbf24" },
-  { id: "issues",     label: "Open Issues",         value: "4",     unit: null,   delta: "Requires Attention", deltaPositive: false, sparkData: [2,3,2,4,3,5,4,3,4],          iconType: "alertTri", iconBg: "#fee2e2", iconColor: "#ef4444", gradientA: "#ef4444", gradientB: "#f87171", isAlert: true },
+// ─── DATA HELPERS ─────────────────────────────────────────────────────────────
+function fmtUnits(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(Math.round(n));
+}
+
+function signedPct(a, b) {
+  if (!b) return null;
+  return ((a - b) / b) * 100;
+}
+
+function fmtDelta(d, suffix) {
+  return d != null ? `${d >= 0 ? "+" : ""}${d.toFixed(1)}% ${suffix}` : "—";
+}
+
+function fmtParamValue(v) {
+  return v >= 100 ? String(Math.round(v)) : v.toFixed(1);
+}
+
+function formatLabel(key) {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bQc\b/g, "QC")
+    .replace(/\bToc\b/g, "TOC")
+    .replace(/\bRpm\b/g, "RPM");
+}
+
+function formatActivityNote(key, value) {
+  if (ACTIVITY_NOTE_OVERRIDES[key]) return ACTIVITY_NOTE_OVERRIDES[key](value);
+  if (key.endsWith("_due")) return `${value} Due Today`;
+  if (key.endsWith("_scheduled")) return `${value} Scheduled`;
+  if (key.endsWith("_time")) return `Today ${value}`;
+  return String(value);
+}
+
+// ─── PALETTES & ICON LOOKUP TABLES ────────────────────────────────────────────
+const AREA_PALETTE  = ["#2563eb", "#16a34a", "#7c3aed", "#d97706", "#cbd5e1", "#db2777", "#0ea5e9"];
+const BATCH_PALETTE = ["#16a34a", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0ea5e9"];
+const ALERT_PALETTE = [
+  { color: T.red.text,    bg: T.red.light,    fill: "#dc2626" },
+  { color: T.amber.text,  bg: T.amber.light,  fill: "#d97706" },
+  { color: T.blue.text,   bg: T.blue.light,   fill: "#2563eb" },
+  { color: T.purple.text, bg: T.purple.light, fill: "#7c3aed" },
+  { color: T.green.text,  bg: T.green.light,  fill: "#16a34a" },
 ];
 
-const PRODUCTION_BY_AREA = [
-  { name: "Granulation", value: 32, color: "#2563eb" },
-  { name: "Compression", value: 28, color: "#16a34a" },
-  { name: "Coating",     value: 20, color: "#7c3aed" },
-  { name: "Packaging",   value: 15, color: "#d97706" },
-  { name: "Others",      value: 5,  color: "#cbd5e1" },
+const AREA_ICON_CONFIG = [
+  { iconType: "droplet", iconBg: T.blue.light,   iconColor: T.blue.solid   },
+  { iconType: "gear",    iconBg: T.amber.light,  iconColor: T.amber.solid  },
+  { iconType: "box2",    iconBg: T.green.light,  iconColor: T.green.solid  },
+  { iconType: "package", iconBg: T.pink.light,   iconColor: T.pink.solid   },
+  { iconType: "box",     iconBg: T.purple.light, iconColor: T.purple.solid },
 ];
 
-const BATCH_STATUS = [
-  { name: "Completed",   value: 12, pct: "50%", color: "#16a34a" },
-  { name: "In Progress", value: 8,  pct: "33%", color: "#2563eb" },
-  { name: "Pending",     value: 3,  pct: "12%", color: "#d97706" },
-  { name: "Hold",        value: 1,  pct: "5%",  color: "#dc2626" },
+const PARAM_ICON_PATTERNS = [
+  { pattern: "rpm",      iconType: "gear",      iconBg: "#ede9fe", iconColor: "#7c3aed" },
+  { pattern: "temp",     iconType: "snowflake", iconBg: "#d1fae5", iconColor: "#10b981" },
+  { pattern: "force",    iconType: "compress",  iconBg: "#dbeafe", iconColor: "#2563eb" },
+  { pattern: "humidity", iconType: "droplet",   iconBg: "#e0f2fe", iconColor: "#0ea5e9" },
+  { pattern: "pressure", iconType: "gauge",     iconBg: "#fef3c7", iconColor: "#d97706" },
+  { pattern: "toc",      iconType: "flask",     iconBg: "#fce7f3", iconColor: "#db2777" },
 ];
 
-const QUALITY_BY_TEST = [
-  { test: "Assay",        pass: 185, fail: 15 },
-  { test: "Dissolution",  pass: 160, fail: 20 },
-  { test: "DP Uniformity",pass: 175, fail: 10 },
-  { test: "Moisture",     pass: 165, fail: 12 },
-  { test: "Microbial",    pass: 120, fail: 8  },
+const ACTIVITY_ICON_PATTERNS = [
+  { pattern: "calibration", iconType: "cal",      iconBg: T.blue.light,   iconColor: T.blue.solid   },
+  { pattern: "maintenance",  iconType: "wrench",   iconBg: T.green.light,  iconColor: T.green.solid  },
+  { pattern: "changeover",   iconType: "swap",     iconBg: T.amber.light,  iconColor: T.amber.solid  },
+  { pattern: "qc",           iconType: "calcheck", iconBg: T.purple.light, iconColor: T.purple.solid },
 ];
 
-const INVENTORY = [
-  { label: "Raw Materials",       value: 128, unit: "Lots", iconType: "droplet", iconBg: T.blue.light,   iconColor: T.blue.solid,   bar: 0.80 },
-  { label: "WIP",                 value: 45,  unit: "Lots", iconType: "gear",    iconBg: T.amber.light,  iconColor: T.amber.solid,  bar: 0.45 },
-  { label: "Finished Goods",      value: 78,  unit: "Lots", iconType: "box2",    iconBg: T.green.light,  iconColor: T.green.solid,  bar: 0.65 },
-  { label: "Packaging Materials", value: 62,  unit: "Lots", iconType: "package", iconBg: T.pink.light,   iconColor: T.pink.solid,   bar: 0.52 },
+const ACTIVITY_NOTE_OVERRIDES = {
+  preventive_maintenance_due: (v) => `${v} Due This Week`,
+};
+
+const ACTIVITY_LABEL_OVERRIDES = {
+  qc_review: "QC Review Meeting",
+};
+
+function getIconByPattern(patterns, key, fallback) {
+  for (const { pattern, ...icon } of patterns) {
+    if (key.includes(pattern)) return icon;
+  }
+  return fallback;
+}
+
+// ─── KPI CARD CONFIG (drives buildKpiCards — add/remove entries here to change the KPI row) ──
+const KPI_CONFIG = [
+  {
+    id: "production", label: "Today's Production", unit: "Units",
+    getValue: (t) => fmtUnits(t.totalProduced),
+    getDelta: (t) => { const d = t.totalTarget ? ((t.totalProduced - t.totalTarget) / t.totalTarget) * 100 : 0; return { text: `${d >= 0 ? "+" : ""}${d.toFixed(1)}% vs target`, positive: d >= 0 }; },
+    getSparkVal: (d) => Math.round(d.totalProduced / 1000),
+    iconType: "factory", iconBg: "#ede9fe", iconColor: "#6366f1", gradientA: "#6366f1", gradientB: "#818cf8",
+  },
+  {
+    id: "capacity", label: "Capacity Utilization", unit: null,
+    getValue: (t) => `${t.capacityPct.toFixed(1)}%`,
+    getDelta: (t, y) => { const d = signedPct(t.capacityPct, y?.capacityPct); return { text: fmtDelta(d, "vs yesterday"), positive: (d ?? 0) >= 0 }; },
+    getSparkVal: (d) => Math.round(d.capacityPct),
+    iconType: "box", iconBg: "#e0f2fe", iconColor: "#0ea5e9", gradientA: "#0ea5e9", gradientB: "#38bdf8",
+  },
+  {
+    id: "quality", label: "Quality Pass Rate", unit: null,
+    getValue: (t) => `${t.qualityPassRate.toFixed(1)}%`,
+    getDelta: (t, y) => { const d = signedPct(t.qualityPassRate, y?.qualityPassRate); return { text: fmtDelta(d, "vs yesterday"), positive: (d ?? 0) >= 0 }; },
+    getSparkVal: (d) => Math.round(d.qualityPassRate),
+    iconType: "shield", iconBg: "#d1fae5", iconColor: "#10b981", gradientA: "#10b981", gradientB: "#34d399",
+  },
+  {
+    id: "batch", label: "Batch Success Rate", unit: null,
+    getValue: (t) => `${t.batchSuccessRate.toFixed(1)}%`,
+    getDelta: (t, y) => { const d = signedPct(t.batchSuccessRate, y?.batchSuccessRate); return { text: fmtDelta(d, "vs yesterday"), positive: (d ?? 0) >= 0 }; },
+    getSparkVal: (d) => Math.round(d.batchSuccessRate),
+    iconType: "check", iconBg: "#ede9fe", iconColor: "#8b5cf6", gradientA: "#8b5cf6", gradientB: "#a78bfa",
+  },
+  {
+    id: "delivery", label: "On Time Delivery", unit: null,
+    getValue: (t) => `${t.onTimePct.toFixed(1)}%`,
+    getDelta: (t, y) => { const d = signedPct(t.onTimePct, y?.onTimePct); return { text: fmtDelta(d, "vs yesterday"), positive: (d ?? 0) >= 0 }; },
+    getSparkVal: (d) => Math.round(d.onTimePct),
+    iconType: "truck", iconBg: "#fef3c7", iconColor: "#f59e0b", gradientA: "#f59e0b", gradientB: "#fbbf24",
+  },
+  {
+    id: "issues", label: "Open Issues", unit: null,
+    getValue: (t) => String(t.openIssues),
+    getDelta: () => ({ text: "Requires Attention", positive: false }),
+    getSparkVal: (d) => d.openIssues,
+    iconType: "alertTri", iconBg: "#fee2e2", iconColor: "#ef4444", gradientA: "#ef4444", gradientB: "#f87171", isAlert: true,
+  },
 ];
 
-const CRITICAL_PARAMS = [
-  { label: "Granulator Speed",    value: "450", unit: "RPM", status: "Normal", iconType: "gear",      iconBg: "#ede9fe", iconColor: "#7c3aed", gaugePct: 0.75 },
-  { label: "Coater Inlet Temp.", value: "58",  unit: "°C",  status: "Normal", iconType: "snowflake", iconBg: "#d1fae5", iconColor: "#10b981", gaugePct: 0.58 },
-  { label: "Compression Force",  value: "18",  unit: "kN",  status: "Normal", iconType: "compress",  iconBg: "#dbeafe", iconColor: "#2563eb", gaugePct: 0.60 },
-  { label: "Humidity",            value: "45",  unit: "% RH",status: "Normal", iconType: "droplet",   iconBg: "#e0f2fe", iconColor: "#0ea5e9", gaugePct: 0.45 },
-  { label: "Differential Press.",value: "12",  unit: "Pa",  status: "Normal", iconType: "gauge",     iconBg: "#fef3c7", iconColor: "#d97706", gaugePct: 0.40 },
-  { label: "Water System TOC",   value: "120", unit: "ppb", status: "Normal", iconType: "flask",     iconBg: "#fce7f3", iconColor: "#db2777", gaugePct: 0.80 },
-];
+function buildKpiCards(today, yesterday, last9) {
+  return KPI_CONFIG.map((cfg) => {
+    const { text: delta, positive: deltaPositive } = cfg.getDelta(today, yesterday);
+    return {
+      id: cfg.id, label: cfg.label, unit: cfg.unit ?? null,
+      value: cfg.getValue(today),
+      delta, deltaPositive,
+      sparkData: last9.map(cfg.getSparkVal),
+      iconType: cfg.iconType, iconBg: cfg.iconBg, iconColor: cfg.iconColor,
+      gradientA: cfg.gradientA, gradientB: cfg.gradientB,
+      isAlert: cfg.isAlert ?? false,
+    };
+  });
+}
 
-const UPCOMING_ACTIVITIES = [
-  { label: "Equipment Calibration",  note: "3 Due Today",      iconBg: T.blue.light,   iconColor: T.blue.solid,   iconType: "cal",      urgency: "high" },
-  { label: "Preventive Maintenance", note: "5 Due This Week",  iconBg: T.green.light,  iconColor: T.green.solid,  iconType: "wrench",   urgency: "med"  },
-  { label: "Changeover",             note: "4 Scheduled",      iconBg: T.amber.light,  iconColor: T.amber.solid,  iconType: "swap",     urgency: "low"  },
-  { label: "QC Review Meeting",      note: "Today 03:00 PM",   iconBg: T.purple.light, iconColor: T.purple.solid, iconType: "calcheck", urgency: "low"  },
-];
+function buildProductionByArea(areas) {
+  const total = Object.values(areas).reduce((s, v) => s + v, 0) || 1;
+  return Object.entries(areas).map(([key, value], i) => ({
+    name: formatLabel(key),
+    value: Math.round((value / total) * 100),
+    color: AREA_PALETTE[i % AREA_PALETTE.length],
+  }));
+}
+
+function buildBatchStatus(batches) {
+  const total = batches.total || 1;
+  return Object.entries(batches)
+    .filter(([key]) => key !== "total")
+    .map(([key, value], i) => ({
+      name: formatLabel(key),
+      value,
+      pct: `${Math.round((value / total) * 100)}%`,
+      color: BATCH_PALETTE[i % BATCH_PALETTE.length],
+    }));
+}
+
+function buildCriticalParams(params, paramRanges) {
+  return Object.entries(params).map(([col, value]) => {
+    const meta = paramRanges?.[col] ?? { label: formatLabel(col), unit: "", min: 0, max: 100 };
+    const { iconType, iconBg, iconColor } = getIconByPattern(PARAM_ICON_PATTERNS, col, { iconType: "gauge", iconBg: "#f4f5f8", iconColor: "#5a6072" });
+    const range = meta.max - meta.min || 1;
+    return {
+      label: meta.label,
+      value: fmtParamValue(value),
+      unit: meta.unit,
+      status: "Normal",
+      iconType, iconBg, iconColor,
+      gaugePct: Math.min(1, Math.max(0, (value - meta.min) / range)),
+    };
+  });
+}
+
+function buildActivities(activities) {
+  return Object.entries(activities).map(([key, value]) => {
+    const { iconType, iconBg, iconColor } = getIconByPattern(ACTIVITY_ICON_PATTERNS, key, { iconType: "cal", iconBg: T.blue.light, iconColor: T.blue.solid });
+    const baseKey = key.replace(/_due$|_scheduled$|_time$/, "");
+    return {
+      label: ACTIVITY_LABEL_OVERRIDES[baseKey] ?? formatLabel(baseKey),
+      note: formatActivityNote(key, value),
+      iconType, iconBg, iconColor,
+      urgency: key.includes("_due") ? "high" : "med",
+    };
+  });
+}
+
+function buildInventory(areas) {
+  const vals = Object.values(areas);
+  const maxVal = Math.max(...vals) || 1;
+  return Object.entries(areas).map(([key, value], i) => {
+    const cfg = AREA_ICON_CONFIG[i % AREA_ICON_CONFIG.length];
+    return {
+      label: formatLabel(key),
+      value: fmtUnits(value),
+      unit: "Units",
+      iconType: cfg.iconType, iconBg: cfg.iconBg, iconColor: cfg.iconColor,
+      bar: value / maxVal,
+    };
+  });
+}
 
 // ─── ICON SYSTEM ──────────────────────────────────────────────────────────────
 function Icon({ type, size = 16, color = "currentColor" }) {
@@ -177,41 +336,44 @@ const DASHBOARD_CSS = `
   .pd-content { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
   @media (min-width: 768px) { .pd-content { padding: 16px 24px; gap: 14px; } }
 
-  /* KPI row */
+  /* KPI row — 2 cols mobile, 3 on sm, 6 on lg */
   .pd-grid-kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  @media (min-width: 480px)  { .pd-grid-kpi { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 540px)  { .pd-grid-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1024px) { .pd-grid-kpi { grid-template-columns: repeat(6, 1fr); gap: 10px; } }
 
-  /* Charts row */
-  .pd-grid-charts { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 640px)  { .pd-grid-charts { grid-template-columns: repeat(2, 1fr); } }
-  @media (min-width: 1280px) { .pd-grid-charts { grid-template-columns: 1fr 1fr 2fr 1fr 1fr; } }
+  /* Quality control row — 2 cols mobile, 4 cols on md+ */
+  .pd-grid-quality { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 1024px) { .pd-grid-quality { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
 
-  /* Quality card spans full row on tablet, auto on desktop */
-  @media (min-width: 640px) and (max-width: 1279px) { .pd-quality-card { grid-column: span 2; } }
+  /* Charts top row — donuts + shift bar */
+  .pd-grid-charts-top { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px)  { .pd-grid-charts-top { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .pd-grid-charts-top { grid-template-columns: 1fr 1fr 2fr; } }
 
-  /* Bottom row */
-  .pd-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 1024px) { .pd-grid-bottom { grid-template-columns: 3fr 1fr; } }
+  /* Shift card: spans 2 on tablet */
+  @media (min-width: 640px) and (max-width: 1023px) { .pd-shift-card { grid-column: span 2; } }
+
+  /* Charts bottom row — area output + activities */
+  .pd-grid-charts-bot { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px) { .pd-grid-charts-bot { grid-template-columns: 1fr 1fr; } }
 
   /* Critical params inner grid */
   .pd-grid-params { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   @media (min-width: 480px)  { .pd-grid-params { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1280px) { .pd-grid-params { grid-template-columns: repeat(6, 1fr); gap: 10px; } }
 
-  /* KPI card value — shrink on very small screens */
+  /* KPI card value */
   .pd-kpi-value { font-size: 22px; }
   @media (min-width: 480px) { .pd-kpi-value { font-size: 26px; } }
 
-  /* Sparkline: hide on smallest screens */
-  .pd-sparkline-wrap { display: none; }
-  @media (min-width: 360px) { .pd-sparkline-wrap { display: flex; } }
+  /* Sparkline: always shown — placed below value so it never crowds the label */
+  .pd-sparkline-wrap { display: flex; margin-bottom: 6px; }
 
-  /* Live badge: icon+text on wider, dot only on mobile */
+  /* Live badge */
   .pd-live-text { display: none; }
   @media (min-width: 480px) { .pd-live-text { display: inline; } }
 
-  /* Pharma header title truncation */
+  /* Pharma header title */
   .pd-header-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
   @media (min-width: 480px) { .pd-header-title { font-size: 15px; max-width: none; } }
 `;
@@ -267,13 +429,15 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ─── QUALITY BAR CHART (Recharts — fully interactive) ────────────────────────
-function QualityBarChart({ data }) {
+// ─── SHIFT BAR CHART (Recharts — produced vs target per shift) ───────────────
+function ShiftBarChart({ data }) {
+  const maxVal = data.length ? Math.max(...data.flatMap((d) => [d.produced, d.target])) : 500;
+  const yMax = Math.ceil(maxVal / 50) * 50;
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} barCategoryGap="22%" barGap={3} margin={{ top: 4, right: 8, left: -12, bottom: 40 }}>
         <XAxis
-          dataKey="test"
+          dataKey="shift"
           interval={0}
           tick={{ fontSize: 10, fill: T.text.muted, fontFamily: "Inter, system-ui, sans-serif", angle: -30, textAnchor: "end", dy: 6 }}
           axisLine={false}
@@ -281,9 +445,9 @@ function QualityBarChart({ data }) {
           height={55}
         />
         <YAxis
-          domain={[0, 200]}
-          ticks={[0, 50, 100, 150, 200]}
+          domain={[0, yMax]}
           tick={{ fontSize: 10, fill: T.text.muted, fontFamily: "Inter, system-ui, sans-serif" }}
+          tickFormatter={(v) => `${v}K`}
           axisLine={false}
           tickLine={false}
         />
@@ -293,8 +457,8 @@ function QualityBarChart({ data }) {
           iconSize={9}
           wrapperStyle={{ fontSize: 11, fontFamily: "Inter, system-ui, sans-serif", paddingTop: 4 }}
         />
-        <Bar dataKey="pass" name="Pass" fill="#16a34a" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="fail" name="Fail" fill="#dc2626" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="produced" name="Produced (K)" fill="#16a34a" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="target"   name="Target (K)"   fill="#94a3b8" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -329,7 +493,59 @@ function ParamGauge({ pct, color }) {
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function PharmaPlantDashboard() {
-  const batchTotal = BATCH_STATUS.reduce((s, d) => s + d.value, 0);
+  const { data, loading: prodLoading, error: prodError } = useProductionData();
+  const { data: qData, loading: qualLoading } = useQualityData();
+
+  const loading = prodLoading || qualLoading;
+
+  const derived = useMemo(() => {
+    if (!data?.today) return null;
+    const { today: prodToday, yesterday: prodYesterday, last9: prodLast9, shiftData, paramRanges } = data;
+
+    // Merge real quality pass rate from quality CSV (falls back to batch-derived value if not loaded yet)
+    const mergeQuality = (prod, qual) =>
+      qual ? { ...prod, qualityPassRate: qual.qualityPassRate } : prod;
+
+    const today = mergeQuality(prodToday, qData?.today);
+    const yesterday = prodYesterday ? mergeQuality(prodYesterday, qData?.yesterday) : null;
+    const last9 = prodLast9.map((d, i) => mergeQuality(d, qData?.last9?.[i]));
+
+    return {
+      kpiCards: buildKpiCards(today, yesterday, last9),
+      productionByArea: buildProductionByArea(today.areas),
+      batchStatus: buildBatchStatus(today.batches),
+      criticalParams: buildCriticalParams(today.params, paramRanges),
+      activities: buildActivities(today.activities),
+      inventoryData: buildInventory(today.areas),
+      shiftChartData: shiftData ?? [],
+      alerts: Object.entries(today.alerts).map(([key, count], i) => ({
+        label: formatLabel(key),
+        count,
+        ...ALERT_PALETTE[i % ALERT_PALETTE.length],
+      })),
+      totalProduced: fmtUnits(today.totalProduced),
+      batchTotal: today.batches.total,
+      qualityMetrics: qData?.today ?? null,
+    };
+  }, [data, qData]);
+
+  if (loading) {
+    return (
+      <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: T.bg, minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.text.muted, fontSize: 14 }}>
+        Loading dashboard data…
+      </div>
+    );
+  }
+
+  if (prodError || !derived) {
+    return (
+      <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: T.bg, minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.red.text, fontSize: 14 }}>
+        Failed to load data: {prodError}
+      </div>
+    );
+  }
+
+  const { kpiCards, productionByArea, batchStatus, criticalParams, activities, inventoryData, shiftChartData, alerts, totalProduced, batchTotal, qualityMetrics } = derived;
 
   return (
     <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: T.bg, minHeight: "100%" }}>
@@ -352,7 +568,7 @@ export default function PharmaPlantDashboard() {
           </div>
           <div style={{ minWidth: 0 }}>
             <div className="pd-header-title" style={{ fontWeight: 800, color: T.text.primary, letterSpacing: "-0.01em" }}>Pharma Manufacturing Plant</div>
-            <div style={{ fontSize: 10.5, color: T.text.muted, marginTop: 1 }}>Operations Overview</div>
+            <div style={{ fontSize: 10.5, color: T.text.muted, marginTop: 1 }}>Operations Overview · {data.latestDate}</div>
           </div>
         </div>
         <div style={{ flexShrink: 0, marginLeft: 8 }}>
@@ -366,23 +582,24 @@ export default function PharmaPlantDashboard() {
 
         {/* ── ROW 1: KPI CARDS ───────────────────────────────────────────────── */}
         <div className="pd-grid-kpi">
-          {KPI_CARDS.map((k) => (
-            <Card key={k.id} alert={k.isAlert} style={{ padding: "14px 16px 13px", display: "flex", flexDirection: "column", gap: 0, position: "relative", overflow: "hidden", cursor: "pointer" }}>
+          {kpiCards.map((k) => (
+            <Card key={k.id} alert={k.isAlert} style={{ padding: "13px 14px 12px", display: "flex", flexDirection: "column", gap: 0, position: "relative", overflow: "hidden", cursor: "pointer" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: k.gradientA }} />
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 10 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500, lineHeight: 1.4, maxWidth: "52%" }}>{k.label}</span>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: k.iconBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon type={k.iconType} size={13} color={k.iconColor} />
-                  </div>
-                  <div className="pd-sparkline-wrap"><Sparkline data={k.sparkData} color={k.gradientA} filled /></div>
+              {/* Label row — icon sits right, label gets all remaining width */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8, gap: 6 }}>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{k.label}</span>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: k.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon type={k.iconType} size={13} color={k.iconColor} />
                 </div>
               </div>
-              <div style={{ marginBottom: 9 }}>
+              {/* Value row */}
+              <div style={{ marginBottom: 6 }}>
                 <span className="pd-kpi-value" style={{ fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>{k.value}</span>
                 {k.unit && <span style={{ fontSize: 11, color: T.text.muted, marginLeft: 4, fontWeight: 500 }}>{k.unit}</span>}
               </div>
-              <div style={{ height: 1, background: T.border, marginBottom: 9 }} />
+              {/* Sparkline — below value, no longer competing with label */}
+              <div className="pd-sparkline-wrap"><Sparkline data={k.sparkData} color={k.gradientA} filled /></div>
+              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
               <div style={{ fontSize: 11, color: k.deltaPositive ? T.green.text : T.orange.text, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
                 <span style={{ fontSize: 13 }}>{k.deltaPositive ? "↑" : "⚠"}</span>
                 <span>{k.delta}</span>
@@ -391,17 +608,124 @@ export default function PharmaPlantDashboard() {
           ))}
         </div>
 
-        {/* ── ROW 2: CHARTS ──────────────────────────────────────────────────── */}
-        <div className="pd-grid-charts">
+        {/* ── QUALITY CONTROL ROW ────────────────────────────────────────────── */}
+        {qualityMetrics && (
+          <div className="pd-grid-quality">
+
+            {/* Audit Score */}
+            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.green.solid }} />
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>Audit Score</span>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.green.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon type="shield" size={13} color={T.green.solid} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ fontSize: 26, fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>
+                  {qualityMetrics.auditScore.toFixed(1)}%
+                </span>
+              </div>
+              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
+              <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3, color: qualityMetrics.auditScore >= qualityMetrics.prevAuditScore ? T.green.text : T.red.text }}>
+                <span style={{ fontSize: 13 }}>{qualityMetrics.auditScore >= qualityMetrics.prevAuditScore ? "↑" : "↓"}</span>
+                <span>{Math.abs(qualityMetrics.auditScore - qualityMetrics.prevAuditScore).toFixed(1)}% vs previous audit</span>
+              </div>
+            </Card>
+
+            {/* Deviations */}
+            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.amber.solid }} />
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>Deviations</span>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.amber.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon type="alertTri" size={13} color={T.amber.solid} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                {[
+                  { label: "Critical", count: qualityMetrics.deviationCritical, color: T.red.solid, bg: T.red.light, text: T.red.text },
+                  { label: "Major",    count: qualityMetrics.deviationMajor,    color: T.amber.solid, bg: T.amber.light, text: T.amber.text },
+                  { label: "Minor",    count: qualityMetrics.deviationMinor,    color: T.blue.solid,  bg: T.blue.light,  text: T.blue.text  },
+                ].map(({ label, count, bg, text }) => (
+                  <div key={label} style={{ flex: 1, background: bg, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: text }}>{count}</div>
+                    <div style={{ fontSize: 9, color: text, fontWeight: 600, marginTop: 1 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
+              <div style={{ fontSize: 11, color: T.text.muted, fontWeight: 500 }}>
+                {qualityMetrics.deviationCritical + qualityMetrics.deviationMajor + qualityMetrics.deviationMinor} total deviations today
+              </div>
+            </Card>
+
+            {/* CAPA Status */}
+            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.purple.solid }} />
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>CAPA Status</span>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.purple.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon type="calcheck" size={13} color={T.purple.solid} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ fontSize: 26, fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>{qualityMetrics.capaPending}</span>
+                <span style={{ fontSize: 11, color: T.text.muted, marginLeft: 4, fontWeight: 500 }}>Pending</span>
+              </div>
+              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.red.text, background: T.red.light, borderRadius: 5, padding: "2px 6px" }}>
+                  {qualityMetrics.capaCritical} Critical
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.amber.text, background: T.amber.light, borderRadius: 5, padding: "2px 6px" }}>
+                  {qualityMetrics.capaMajor} Major
+                </span>
+              </div>
+            </Card>
+
+            {/* Upcoming Audits */}
+            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.blue.solid }} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>Upcoming Audits</span>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.blue.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon type="cal" size={13} color={T.blue.solid} />
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {qualityMetrics.upcomingAudits.map((audit, i) => {
+                  const priorityColor = audit.priority === "High" ? T.red.text : audit.priority === "Medium" ? T.amber.text : T.green.text;
+                  const priorityBg   = audit.priority === "High" ? T.red.light  : audit.priority === "Medium" ? T.amber.light  : T.green.light;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < qualityMetrics.upcomingAudits.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{audit.name}</div>
+                        <div style={{ fontSize: 9.5, color: T.text.muted, marginTop: 1 }}>{audit.dept} · {audit.date}</div>
+                      </div>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: priorityColor, background: priorityBg, borderRadius: 4, padding: "2px 5px", flexShrink: 0 }}>
+                        {audit.priority}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+          </div>
+        )}
+
+        {/* ── ROW 2: CHARTS TOP — donuts + shift bar ─────────────────────────── */}
+        <div className="pd-grid-charts-top">
 
           {/* Production by Area */}
           <Card style={{ padding: "16px 18px" }}>
             <SectionTitle>Production by Area</SectionTitle>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <Donut data={PRODUCTION_BY_AREA} total={100} centerText="1.25M" centerSub="Units" size={148} thickness={19} />
+              <Donut data={productionByArea} total={100} centerText={totalProduced} centerSub="Units" size={148} thickness={19} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {PRODUCTION_BY_AREA.map((d) => (
+              {productionByArea.map((d) => (
                 <DonutLegendRow key={d.name} d={d} />
               ))}
             </div>
@@ -411,26 +735,31 @@ export default function PharmaPlantDashboard() {
           <Card style={{ padding: "16px 18px" }}>
             <SectionTitle>Batch Status</SectionTitle>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <Donut data={BATCH_STATUS} total={batchTotal} centerText={batchTotal} centerSub="Total Batches" size={148} thickness={19} />
+              <Donut data={batchStatus} total={batchTotal} centerText={batchTotal} centerSub="Total Batches" size={148} thickness={19} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {BATCH_STATUS.map((d) => (
+              {batchStatus.map((d) => (
                 <BatchLegendRow key={d.name} d={d} />
               ))}
             </div>
           </Card>
 
-          {/* Quality by Test Type — Recharts */}
-          <Card className="pd-quality-card" style={{ padding: "16px 18px" }}>
-            <SectionTitle>Quality by Test Type</SectionTitle>
-            <QualityBarChart data={QUALITY_BY_TEST} />
+          {/* Shift Performance — spans 2 cols on tablet, 2fr on desktop */}
+          <Card className="pd-shift-card" style={{ padding: "16px 18px" }}>
+            <SectionTitle>Shift Performance</SectionTitle>
+            <ShiftBarChart data={shiftChartData} />
           </Card>
 
-          {/* Inventory Summary */}
+        </div>
+
+        {/* ── ROW 3: CHARTS BOTTOM — area output + activities ────────────────── */}
+        <div className="pd-grid-charts-bot">
+
+          {/* Area Output Today */}
           <Card style={{ padding: "16px 18px" }}>
-            <SectionTitle>Inventory Summary</SectionTitle>
+            <SectionTitle>Area Output Today</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {INVENTORY.map((inv) => (
+              {inventoryData.map((inv) => (
                 <InventoryRow key={inv.label} inv={inv} />
               ))}
             </div>
@@ -440,17 +769,18 @@ export default function PharmaPlantDashboard() {
           <Card style={{ padding: "16px 18px" }}>
             <SectionTitle action="View All →">Upcoming Activities</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {UPCOMING_ACTIVITIES.map((a, i) => (
-                <ActivityRow key={a.label} a={a} last={i === UPCOMING_ACTIVITIES.length - 1} />
+              {activities.map((a, i) => (
+                <ActivityRow key={a.label} a={a} last={i === activities.length - 1} />
               ))}
             </div>
           </Card>
+
         </div>
 
-        {/* ── ROW 3: CRITICAL PARAMS + ALERTS ────────────────────────────────── */}
+        {/* ── ROW 3: CRITICAL PARAMS + ALERTS (commented out) ──────────────
         <div className="pd-grid-bottom">
 
-          {/* Critical Parameters */}
+          {/* Critical Parameters *\/}
           <Card style={{ padding: "16px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -459,26 +789,23 @@ export default function PharmaPlantDashboard() {
               </div>
             </div>
             <div className="pd-grid-params">
-              {CRITICAL_PARAMS.map((p) => (
+              {criticalParams.map((p) => (
                 <ParamCard key={p.label} p={p} />
               ))}
             </div>
           </Card>
 
-          {/* Alerts Summary */}
+          {/* Alerts Summary *\/}
           <Card style={{ padding: "16px 18px" }}>
             <SectionTitle action="View All →">Alerts Summary</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-              {[
-                { label: "High",   count: 1, color: T.red.text,   bg: T.red.light,   fill: "#dc2626" },
-                { label: "Medium", count: 2, color: T.amber.text, bg: T.amber.light, fill: "#d97706" },
-                { label: "Low",    count: 3, color: T.blue.text,  bg: T.blue.light,  fill: "#2563eb" },
-              ].map(a => (
+              {alerts.map(a => (
                 <AlertRow key={a.label} a={a} />
               ))}
             </div>
           </Card>
         </div>
+        ────────────────────────────────────────────────────────────────── */}
       </div>
     </div>
   );
@@ -499,11 +826,11 @@ function DonutLegendRow({ d }) {
         transition: "background 0.15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block", flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: T.text.secondary }}>{d.name}</span>
+        <span style={{ fontSize: 11, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <div style={{ width: 36, height: 4, borderRadius: 4, background: "#eef0f5", overflow: "hidden" }}>
           <div style={{ width: `${d.value * 3}%`, height: "100%", background: d.color, borderRadius: 4, transition: "width 0.3s" }} />
         </div>
@@ -526,11 +853,11 @@ function BatchLegendRow({ d }) {
         transition: "background 0.15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block", flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: T.text.secondary }}>{d.name}</span>
+        <span style={{ fontSize: 11, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: T.text.primary }}>{d.value}</span>
         <span style={{ fontSize: 10, color: T.text.muted, background: hov ? `${d.color}20` : "#f4f5f8", padding: "1px 5px", borderRadius: 4, transition: "background 0.15s" }}>{d.pct}</span>
       </div>
@@ -551,14 +878,14 @@ function InventoryRow({ inv }) {
         transition: "all 0.15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5, gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: inv.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: hov ? "scale(1.1)" : "scale(1)", transition: "transform 0.15s" }}>
             <Icon type={inv.iconType} size={13} color={inv.iconColor} />
           </div>
-          <span style={{ fontSize: 11.5, color: T.text.secondary }}>{inv.label}</span>
+          <span style={{ fontSize: 11.5, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.label}</span>
         </div>
-        <div>
+        <div style={{ flexShrink: 0 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: T.text.primary }}>{inv.value}</span>
           <span style={{ fontSize: 10, color: T.text.muted, marginLeft: 3 }}>{inv.unit}</span>
         </div>
