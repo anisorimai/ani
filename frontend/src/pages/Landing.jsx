@@ -51,7 +51,7 @@ function SignInForm({ setView }) {
     try {
       await login(email, password);
       toast.success('Access Granted');
-      navigate('/dashboard');
+      navigate('/ai');
     } catch (err) {
       toast.error(err.message || 'Authentication failed');
     }
@@ -128,7 +128,7 @@ function SignUpForm({ setView }) {
     try {
       await signup({ name, username, email, password });
       toast.success('Account Created');
-      navigate('/dashboard');
+      navigate('/ai');
     } catch (err) {
       toast.error(err.message || 'Signup failed');
     }

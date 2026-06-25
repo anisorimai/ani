@@ -51,11 +51,6 @@ from orchestrator.query_normalizer import QueryMeta, normalize_query
 from orchestrator.reference_resolver import is_followup_query, resolve_references
 from orchestrator.response_composer import StructuredResponse, compose
 from prompts.builder import PromptContext, build_system_prompt as _build_prompt
-from orchestrator.response_composer import (
-    StructuredResponse,
-    build_system_prompt,
-    compose,
-)
 from orchestrator.retrieval_validator import ValidationResult, validate_retrieval
 from orchestrator.semantic_expander import build_search_terms, get_query_embedding
 from orchestrator.session_context import (
@@ -540,6 +535,7 @@ class QueryOrchestrator:
         page: int = 1,
         user_id: str = "",
         org_id: str = "",
+        dashboard_context: str = "",
     ) -> StructuredResponse:
         """Non-streaming pipeline. Returns a fully-populated StructuredResponse."""
         pipeline_start = time.perf_counter()
@@ -606,6 +602,9 @@ class QueryOrchestrator:
                     "Answer the user's question based on the knowledge base above. "
                     "If the answer is not present in the documents, say so clearly."
                 )
+            elif dashboard_context in _intents.SCOPED_FAST_PATH:
+                _fp = _intents.SCOPED_FAST_PATH[dashboard_context]
+                system = _fp.get(intent, _fp.get("conversational", _intents.FAST_PATH[intent]))
             else:
                 system = _intents.FAST_PATH[intent]
             msgs = [{"role": "system", "content": system}]
@@ -645,7 +644,7 @@ class QueryOrchestrator:
         #── Stages 3-9: DB pipeline ────────────────────────────────────────────
         result = await self._db_pipeline(
             resolved_query, query_meta, intent, [], session_id, timings, page,
-            user_id=user_id, org_id=org_id,
+            user_id=user_id, org_id=org_id, dashboard_context=dashboard_context,
         )
 
         self._update_context(
@@ -672,6 +671,7 @@ class QueryOrchestrator:
         page: int = 1,
         user_id: str = "",
         org_id: str = "",
+        dashboard_context: str = "",
     ) -> AsyncGenerator[str, None]:
         """Streaming pipeline — yields LLM tokens as they arrive."""
         await self._ensure_ready()
@@ -722,6 +722,9 @@ class QueryOrchestrator:
                     "Answer the user's question based on the knowledge base above. "
                     "If the answer is not present in the documents, say so clearly."
                 )
+            elif dashboard_context in _intents.SCOPED_FAST_PATH:
+                _fp = _intents.SCOPED_FAST_PATH[dashboard_context]
+                system = _fp.get(intent, _fp.get("conversational", _intents.FAST_PATH[intent]))
             else:
                 import prompts.intents as _intents
                 system = _intents.FAST_PATH[intent]
@@ -753,6 +756,8 @@ class QueryOrchestrator:
         # Stage 3: Collection selection
         t3 = time.perf_counter()
         selected = await select_collections(resolved_query, self._metadata, self._llm)
+        if dashboard_context in _intents.SCOPED_COLLECTION:
+            selected = [_intents.SCOPED_COLLECTION[dashboard_context]]
         logger.info("[STAGE 3][STREAM] selected=%s sel_ms=%.0f", selected, _ms(t3))
 
         # Stage 4: Semantic keyword build
@@ -835,9 +840,8 @@ class QueryOrchestrator:
 
             # Short-circuit: simple filtered-count query → answer directly, skip LLM.
             # DB is authoritative for count queries.
-            import sys as _sys
             direct = _try_direct_count_response(analytics_results, query_meta)
-            print(f"[SC-STREAM] direct={direct!r} analytics_keys={list(analytics_results.keys())}", file=_sys.stderr, flush=True)
+            logger.debug("[SC-STREAM] direct=%r analytics_keys=%s", direct, list(analytics_results.keys()))
             if direct is not None:
                 yield direct
                 self._update_context(session_id, query, direct, intent, selected, query_meta)
@@ -1083,6 +1087,7 @@ class QueryOrchestrator:
         page: int = 1,
         user_id: str = "",
         org_id: str = "",
+        dashboard_context: str = "",
     ) -> StructuredResponse:
         """Stages 3-9 for the non-streaming path."""
         pipeline_start = time.perf_counter()
@@ -1090,6 +1095,8 @@ class QueryOrchestrator:
         # Stage 3: Collection selection
         t3 = time.perf_counter()
         selected = await select_collections(query, self._metadata, self._llm)
+        if dashboard_context in _intents.SCOPED_COLLECTION:
+            selected = [_intents.SCOPED_COLLECTION[dashboard_context]]
         timings["collection_selection_ms"] = _ms(t3)
         logger.info("[STAGE 3] selected=%s", selected)
 

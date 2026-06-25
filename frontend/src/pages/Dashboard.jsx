@@ -59,7 +59,7 @@ export default function Dashboard() {
           )
           : (
             <div className="flex-1 overflow-y-auto flex flex-col min-h-0" ref={scrollContainerRef}>
-              <ChatWindow scrollContainerRef={scrollContainerRef} />
+              <ChatWindow scrollContainerRef={scrollContainerRef} dashboardContext="production" />
             </div>
           )
         }

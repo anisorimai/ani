@@ -336,45 +336,44 @@ const DASHBOARD_CSS = `
   .pd-content { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
   @media (min-width: 768px) { .pd-content { padding: 16px 24px; gap: 14px; } }
 
-  /* KPI row */
+  /* KPI row — 2 cols mobile, 3 on sm, 6 on lg */
   .pd-grid-kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  @media (min-width: 480px)  { .pd-grid-kpi { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 540px)  { .pd-grid-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1024px) { .pd-grid-kpi { grid-template-columns: repeat(6, 1fr); gap: 10px; } }
 
-  /* Charts row */
-  .pd-grid-charts { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 640px)  { .pd-grid-charts { grid-template-columns: repeat(2, 1fr); } }
-  @media (min-width: 1280px) { .pd-grid-charts { grid-template-columns: 1fr 1fr 2fr 1fr 1fr; } }
+  /* Quality control row — 2 cols mobile, 4 cols on md+ */
+  .pd-grid-quality { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 1024px) { .pd-grid-quality { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
 
-  /* Quality card spans full row on tablet, auto on desktop */
-  @media (min-width: 640px) and (max-width: 1279px) { .pd-quality-card { grid-column: span 2; } }
+  /* Charts top row — donuts + shift bar */
+  .pd-grid-charts-top { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px)  { .pd-grid-charts-top { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .pd-grid-charts-top { grid-template-columns: 1fr 1fr 2fr; } }
 
-  /* Bottom row */
-  .pd-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 1024px) { .pd-grid-bottom { grid-template-columns: 3fr 1fr; } }
+  /* Shift card: spans 2 on tablet */
+  @media (min-width: 640px) and (max-width: 1023px) { .pd-shift-card { grid-column: span 2; } }
+
+  /* Charts bottom row — area output + activities */
+  .pd-grid-charts-bot { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px) { .pd-grid-charts-bot { grid-template-columns: 1fr 1fr; } }
 
   /* Critical params inner grid */
   .pd-grid-params { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   @media (min-width: 480px)  { .pd-grid-params { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1280px) { .pd-grid-params { grid-template-columns: repeat(6, 1fr); gap: 10px; } }
 
-  /* Quality Control row */
-  .pd-grid-quality { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  @media (min-width: 1024px) { .pd-grid-quality { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
-
-  /* KPI card value — shrink on very small screens */
+  /* KPI card value */
   .pd-kpi-value { font-size: 22px; }
   @media (min-width: 480px) { .pd-kpi-value { font-size: 26px; } }
 
-  /* Sparkline: hide on smallest screens */
-  .pd-sparkline-wrap { display: none; }
-  @media (min-width: 360px) { .pd-sparkline-wrap { display: flex; } }
+  /* Sparkline: always shown — placed below value so it never crowds the label */
+  .pd-sparkline-wrap { display: flex; margin-bottom: 6px; }
 
-  /* Live badge: icon+text on wider, dot only on mobile */
+  /* Live badge */
   .pd-live-text { display: none; }
   @media (min-width: 480px) { .pd-live-text { display: inline; } }
 
-  /* Pharma header title truncation */
+  /* Pharma header title */
   .pd-header-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
   @media (min-width: 480px) { .pd-header-title { font-size: 15px; max-width: none; } }
 `;
@@ -584,22 +583,23 @@ export default function PharmaPlantDashboard() {
         {/* ── ROW 1: KPI CARDS ───────────────────────────────────────────────── */}
         <div className="pd-grid-kpi">
           {kpiCards.map((k) => (
-            <Card key={k.id} alert={k.isAlert} style={{ padding: "14px 16px 13px", display: "flex", flexDirection: "column", gap: 0, position: "relative", overflow: "hidden", cursor: "pointer" }}>
+            <Card key={k.id} alert={k.isAlert} style={{ padding: "13px 14px 12px", display: "flex", flexDirection: "column", gap: 0, position: "relative", overflow: "hidden", cursor: "pointer" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: k.gradientA }} />
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 10 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500, lineHeight: 1.4, maxWidth: "52%" }}>{k.label}</span>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: k.iconBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon type={k.iconType} size={13} color={k.iconColor} />
-                  </div>
-                  <div className="pd-sparkline-wrap"><Sparkline data={k.sparkData} color={k.gradientA} filled /></div>
+              {/* Label row — icon sits right, label gets all remaining width */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8, gap: 6 }}>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{k.label}</span>
+                <div style={{ width: 26, height: 26, borderRadius: 7, background: k.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon type={k.iconType} size={13} color={k.iconColor} />
                 </div>
               </div>
-              <div style={{ marginBottom: 9 }}>
+              {/* Value row */}
+              <div style={{ marginBottom: 6 }}>
                 <span className="pd-kpi-value" style={{ fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>{k.value}</span>
                 {k.unit && <span style={{ fontSize: 11, color: T.text.muted, marginLeft: 4, fontWeight: 500 }}>{k.unit}</span>}
               </div>
-              <div style={{ height: 1, background: T.border, marginBottom: 9 }} />
+              {/* Sparkline — below value, no longer competing with label */}
+              <div className="pd-sparkline-wrap"><Sparkline data={k.sparkData} color={k.gradientA} filled /></div>
+              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
               <div style={{ fontSize: 11, color: k.deltaPositive ? T.green.text : T.orange.text, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
                 <span style={{ fontSize: 13 }}>{k.deltaPositive ? "↑" : "⚠"}</span>
                 <span>{k.delta}</span>
@@ -715,8 +715,8 @@ export default function PharmaPlantDashboard() {
           </div>
         )}
 
-        {/* ── ROW 2: CHARTS ──────────────────────────────────────────────────── */}
-        <div className="pd-grid-charts">
+        {/* ── ROW 2: CHARTS TOP — donuts + shift bar ─────────────────────────── */}
+        <div className="pd-grid-charts-top">
 
           {/* Production by Area */}
           <Card style={{ padding: "16px 18px" }}>
@@ -744,11 +744,16 @@ export default function PharmaPlantDashboard() {
             </div>
           </Card>
 
-          {/* Shift Performance — Recharts */}
-          <Card className="pd-quality-card" style={{ padding: "16px 18px" }}>
+          {/* Shift Performance — spans 2 cols on tablet, 2fr on desktop */}
+          <Card className="pd-shift-card" style={{ padding: "16px 18px" }}>
             <SectionTitle>Shift Performance</SectionTitle>
             <ShiftBarChart data={shiftChartData} />
           </Card>
+
+        </div>
+
+        {/* ── ROW 3: CHARTS BOTTOM — area output + activities ────────────────── */}
+        <div className="pd-grid-charts-bot">
 
           {/* Area Output Today */}
           <Card style={{ padding: "16px 18px" }}>
@@ -769,6 +774,7 @@ export default function PharmaPlantDashboard() {
               ))}
             </div>
           </Card>
+
         </div>
 
         {/* ── ROW 3: CRITICAL PARAMS + ALERTS (commented out) ──────────────
@@ -820,11 +826,11 @@ function DonutLegendRow({ d }) {
         transition: "background 0.15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block", flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: T.text.secondary }}>{d.name}</span>
+        <span style={{ fontSize: 11, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <div style={{ width: 36, height: 4, borderRadius: 4, background: "#eef0f5", overflow: "hidden" }}>
           <div style={{ width: `${d.value * 3}%`, height: "100%", background: d.color, borderRadius: 4, transition: "width 0.3s" }} />
         </div>
@@ -847,11 +853,11 @@ function BatchLegendRow({ d }) {
         transition: "background 0.15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block", flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: T.text.secondary }}>{d.name}</span>
+        <span style={{ fontSize: 11, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: T.text.primary }}>{d.value}</span>
         <span style={{ fontSize: 10, color: T.text.muted, background: hov ? `${d.color}20` : "#f4f5f8", padding: "1px 5px", borderRadius: 4, transition: "background 0.15s" }}>{d.pct}</span>
       </div>
@@ -872,14 +878,14 @@ function InventoryRow({ inv }) {
         transition: "all 0.15s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5, gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: inv.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: hov ? "scale(1.1)" : "scale(1)", transition: "transform 0.15s" }}>
             <Icon type={inv.iconType} size={13} color={inv.iconColor} />
           </div>
-          <span style={{ fontSize: 11.5, color: T.text.secondary }}>{inv.label}</span>
+          <span style={{ fontSize: 11.5, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.label}</span>
         </div>
-        <div>
+        <div style={{ flexShrink: 0 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: T.text.primary }}>{inv.value}</span>
           <span style={{ fontSize: 10, color: T.text.muted, marginLeft: 3 }}>{inv.unit}</span>
         </div>

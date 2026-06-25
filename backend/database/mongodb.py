@@ -26,7 +26,10 @@ async def connect_db() -> None:
         return
     try:
         _client = motor.motor_asyncio.AsyncIOMotorClient(
-            MONGO_URI, serverSelectionTimeoutMS=5000
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            tls=True,
+            tlsAllowInvalidCertificates=True,
         )
         await _client.admin.command("ping")
         _db = _client[MONGO_DB_NAME]

@@ -239,7 +239,6 @@ const useChatStore = create((set, get) => ({
         }
       }
       const updatedConv = { ...conv, messages, updatedAt: Date.now() };
-      const { saveConversation } = require('../services/cache');
       saveConversation(conversationId, updatedConv, _uid());
       return { conversations: { ...state.conversations, [conversationId]: updatedConv } };
     });

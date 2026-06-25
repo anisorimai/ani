@@ -293,7 +293,7 @@ class _VoxaWebSocket {
     this._clearHandlers();
   }
 
-  async send(message, conversationId, history, page, onToken, onComplete, onError) {
+  async send(message, conversationId, history, page, onToken, onComplete, onError, dashboardContext = "") {
     this._clearHandlers();
     this._onToken    = onToken;
     this._onComplete = onComplete;
@@ -312,6 +312,7 @@ class _VoxaWebSocket {
     this._ws.send(JSON.stringify({
       token, message, conversation_id: conversationId, history, page,
       request_id: this._requestId,
+      dashboard_context: dashboardContext,
     }));
   }
 
@@ -330,9 +331,9 @@ export function closeStream() {
   _ws.cancel();
 }
 
-export function streamMessage(message, conversationId, onToken, onComplete, onError, history = [], page = 1) {
+export function streamMessage(message, conversationId, onToken, onComplete, onError, history = [], page = 1, dashboardContext = "") {
   _ws.cancel();
-  _ws.send(message, conversationId, history, page, onToken, onComplete, onError);
+  _ws.send(message, conversationId, history, page, onToken, onComplete, onError, dashboardContext);
   return { close: () => _ws.cancel() };
 }
 

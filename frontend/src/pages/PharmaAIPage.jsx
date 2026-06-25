@@ -26,6 +26,12 @@ const DOMAIN_DASHBOARDS = {
   Logistics:  LogisticsDashboard,
 };
 
+// Maps sidebar domain → backend dashboard_context (empty = unrestricted)
+const DOMAIN_CONTEXT = {
+  Production: 'production',
+  Quality:    'quality',
+};
+
 export default function PharmaAIPage() {
   const [selectedDomain, setSelectedDomain] = useState('Production');
 
@@ -150,7 +156,11 @@ export default function PharmaAIPage() {
           ref={scrollContainerRef}
         >
           {/* Chat section — no inner scroll; messages flow with the page */}
-          <ChatWindow scrollContainerRef={scrollContainerRef} domain={selectedDomain} />
+          <ChatWindow
+            scrollContainerRef={scrollContainerRef}
+            domain={selectedDomain}
+            dashboardContext={DOMAIN_CONTEXT[selectedDomain] || ''}
+          />
 
           {/* Dashboard below the chat */}
           <div className="border-t border-[var(--brd)]">

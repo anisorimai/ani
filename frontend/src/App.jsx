@@ -5,7 +5,6 @@ import useThemeStore from './store/useThemeStore';
 import useAuthStore from './store/useAuthStore';
 import ProtectedRoute from './components/ProtectedRoute';
 import Landing from './pages/Landing';
-import Dashboard from './pages/Dashboard';
 import PharmaAIPage from './pages/PharmaAIPage';
 
 export default function App() {
@@ -69,16 +68,6 @@ export default function App() {
           element={
             <ProtectedRoute>
               <PharmaAIPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Classic dashboard — preserved as-is */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
             </ProtectedRoute>
           }
         />

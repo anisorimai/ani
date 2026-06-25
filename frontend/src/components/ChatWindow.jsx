@@ -22,7 +22,7 @@ function isNearBottom(el) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
 }
 
-export default function ChatWindow({ scrollContainerRef, domain = 'Production' }) {
+export default function ChatWindow({ scrollContainerRef, domain = 'Production', dashboardContext = '' }) {
   /* ── DOM refs ── */
   const messagesContainerRef = useRef(null);   // scroll container
   const messagesEndRef       = useRef(null);   // invisible sentinel at the bottom
@@ -193,7 +193,8 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production' }
         streamHandleRef.current = null;
       },
       priorHistory,
-      page
+      page,
+      dashboardContext
     );
   }, [activeConversationId, createConversation, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream, removeLastAssistantMessage]);
 
@@ -325,7 +326,9 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production' }
         });
         streamHandleRef.current = null;
       },
-      history.slice(0, -1) // Send history excluding the message we just updated as 'current query'
+      history.slice(0, -1), // Send history excluding the message we just updated as 'current query'
+      1,
+      dashboardContext
     );
   }, [activeConversationId, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream]);
 

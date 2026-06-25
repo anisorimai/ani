@@ -207,26 +207,8 @@ export default function Sidebar({ isOpen, onClose, onNavigateToChat }) {
           </button>
         </div>
 
-        {/* ── New Chat + Documents buttons ── */}
+        {/* ── Documents button ── */}
         <div className="px-3 py-2.5 flex-shrink-0 flex flex-col gap-1.5">
-          <button
-            id="sidebar-new-chat-btn"
-            className="ci-sidebar-btn flex items-center gap-2 px-3 py-2 rounded-lg w-full transition-all duration-150 text-left"
-            style={{ color: 'var(--sb-txt2)' }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--ci-primary-solid) 45%, transparent)';
-              e.currentTarget.style.color = 'var(--sb-txt)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'var(--sb-brd)';
-              e.currentTarget.style.color = 'var(--sb-txt2)';
-            }}
-            onClick={handleNewChat}
-          >
-            <HiOutlinePlus size={16} style={{ color: 'var(--ci-primary-solid)', flexShrink: 0 }} />
-            <span className="text-[0.8125rem] font-medium">New Chat</span>
-          </button>
-
           <button
             className="ci-sidebar-btn flex items-center gap-2 px-3 py-2 rounded-lg w-full transition-all duration-150 text-left"
             style={{ color: 'var(--sb-txt2)' }}
