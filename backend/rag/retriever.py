@@ -142,11 +142,27 @@ def resolve_equipment_deterministically(query: str, known_equipments: list[str])
     return list(set(matched))
 
 
-def _scope_filter(user_id: str = "", org_id: Optional[str] = None) -> dict:
-    """
-    Build a MongoDB filter. Since we migrated to a plant-wide repository,
-    this returns an empty dict to match all chunks across the entire plant.
-    """
+def _scope_filter(
+    user_id: str = "",
+    org_id: Optional[str] = None,
+    dashboard_scope: Optional[str] = None,
+) -> dict:
+    """Build a MongoDB filter for the current retrieval scope."""
+    normalized_scope = (dashboard_scope or "enterprise").strip().lower()
+    if normalized_scope == "quality":
+        return {
+            "$or": [
+                {"metadata.dashboard_scope": "quality"},
+                {"metadata.dashboard_scope": {"$in": ["general", "enterprise"]}},
+            ]
+        }
+    if normalized_scope == "manufacturing":
+        return {
+            "$or": [
+                {"metadata.dashboard_scope": "manufacturing"},
+                {"metadata.dashboard_scope": {"$in": ["general", "enterprise"]}},
+            ]
+        }
     return {}
 
 
@@ -190,13 +206,30 @@ async def _retrieve_candidates(
     user_id: str,
     org_id: Optional[str] = None,
     equipments: Optional[list[str]] = None,
+    dashboard_scope: Optional[str] = None,
 ) -> list[dict]:
     """Retrieve search candidates using vector search, falling back to keyword search."""
     candidates = []
     if query_vector:
-        candidates = await _vector_search(db, query_vector, user_id, _CANDIDATE_K, org_id, equipments=equipments)
+        candidates = await _vector_search(
+            db,
+            query_vector,
+            user_id,
+            _CANDIDATE_K,
+            org_id,
+            equipments=equipments,
+            dashboard_scope=dashboard_scope,
+        )
     if not candidates:
-        candidates = await _keyword_search(db, query_text, user_id, _CANDIDATE_K, org_id, equipments=equipments)
+        candidates = await _keyword_search(
+            db,
+            query_text,
+            user_id,
+            _CANDIDATE_K,
+            org_id,
+            equipments=equipments,
+            dashboard_scope=dashboard_scope,
+        )
     return candidates
 
 
@@ -207,6 +240,7 @@ async def _retrieve_boosted_candidates(
     user_id: str,
     org_id: Optional[str],
     equipments: list[str],
+    dashboard_scope: Optional[str] = None,
 ) -> list[dict]:
     """
     Retrieve from equipment folder and plant-wide, merge, deduplicate,
@@ -215,13 +249,29 @@ async def _retrieve_boosted_candidates(
     from config.settings import RAG_EQUIPMENT_BOOST
     
     # 1. Fetch equipment-scoped candidates
-    eq_candidates = await _retrieve_candidates(db, query_vector, query_text, user_id, org_id, equipments=equipments)
+    eq_candidates = await _retrieve_candidates(
+        db,
+        query_vector,
+        query_text,
+        user_id,
+        org_id,
+        equipments=equipments,
+        dashboard_scope=dashboard_scope,
+    )
     for c in eq_candidates:
         c["score"] = min(1.0, c.get("score", 0.0) * RAG_EQUIPMENT_BOOST)
         c["equipment_matched"] = True
         
     # 2. Fetch plant-wide candidates
-    plant_candidates = await _retrieve_candidates(db, query_vector, query_text, user_id, org_id, equipments=None)
+    plant_candidates = await _retrieve_candidates(
+        db,
+        query_vector,
+        query_text,
+        user_id,
+        org_id,
+        equipments=None,
+        dashboard_scope=dashboard_scope,
+    )
     
     # Merge and deduplicate
     candidates = list(eq_candidates)
@@ -241,32 +291,8 @@ async def _retrieve_boosted_candidates(
 
 
 def apply_scope_boost(candidates: list[dict], requested_scope: str) -> list[dict]:
-    """Apply dashboard scope multipliers after retrieval so all plant chunks remain candidates."""
-    multipliers = {"quality": 1.3, "manufacturing": 1.1, "enterprise": 1.0}
-    requested_key = (requested_scope or "enterprise").lower()
-    base_multiplier = multipliers.get(requested_key, 1.0)
-
-    boosted: list[dict] = []
-    for chunk in candidates:
-        metadata = chunk.get("metadata") or {}
-        chunk_scope = (metadata.get("dashboard_scope") or "enterprise").lower()
-        multiplier = multipliers.get(chunk_scope, 1.0)
-        adjusted_score = chunk.get("score", 0.0) * multiplier
-
-        if chunk.get("equipment_matched") and metadata.get("equipment"):
-            adjusted_score += 0.2
-
-        chunk = dict(chunk)
-        chunk["score"] = adjusted_score
-        chunk["boosted_by_scope"] = chunk_scope
-        boosted.append(chunk)
-
-    if requested_key != "enterprise":
-        boosted.sort(key=lambda item: item.get("score", 0.0), reverse=True)
-    else:
-        boosted.sort(key=lambda item: item.get("score", 0.0), reverse=True)
-
-    return boosted
+    """Preserve relevance ranking without applying score-based scope weighting."""
+    return [dict(candidate) for candidate in candidates]
 
 
 async def retrieve_chunks(
@@ -302,7 +328,15 @@ async def retrieve_chunks(
         }
         query_understanding_var.set(understanding)
         logger.info("[RAG RETRIEVER] Bypassing equipment resolution (intent=%s)", intent)
-        candidates = await _retrieve_candidates(db, query_vector, query_text, user_id, org_id, equipments=None)
+        candidates = await _retrieve_candidates(
+            db,
+            query_vector,
+            query_text,
+            user_id,
+            org_id,
+            equipments=None,
+            dashboard_scope=dashboard_scope,
+        )
     else:
         # ── Deterministic Equipment Resolution ────────────────────────────────
         known_equipments = await _get_known_equipments(db)
@@ -322,7 +356,15 @@ async def retrieve_chunks(
             logger.info("[RAG RETRIEVER] Equipment resolved: %s", matched_eq)
             
             # Retrieve with boost
-            candidates = await _retrieve_boosted_candidates(db, query_vector, query_text, user_id, org_id, [matched_eq])
+            candidates = await _retrieve_boosted_candidates(
+                db,
+                query_vector,
+                query_text,
+                user_id,
+                org_id,
+                [matched_eq],
+                dashboard_scope=dashboard_scope,
+            )
             
         elif len(matched_equipments) > 1:
             # Ambiguous Matches
@@ -337,7 +379,15 @@ async def retrieve_chunks(
             logger.info("[RAG RETRIEVER] Ambiguous matches: %s. Defaulting to plant-wide, no boost.", matched_equipments)
             
             # Fall back to plant-wide retrieval
-            candidates = await _retrieve_candidates(db, query_vector, query_text, user_id, org_id, equipments=None)
+            candidates = await _retrieve_candidates(
+                db,
+                query_vector,
+                query_text,
+                user_id,
+                org_id,
+                equipments=None,
+                dashboard_scope=dashboard_scope,
+            )
             
         else:
             # No Matches
@@ -351,7 +401,15 @@ async def retrieve_chunks(
             query_understanding_var.set(understanding)
             logger.info("[RAG RETRIEVER] No equipment matched. Defaulting to plant-wide retrieval.")
             
-            candidates = await _retrieve_candidates(db, query_vector, query_text, user_id, org_id, equipments=None)
+            candidates = await _retrieve_candidates(
+                db,
+                query_vector,
+                query_text,
+                user_id,
+                org_id,
+                equipments=None,
+                dashboard_scope=dashboard_scope,
+            )
 
     if not candidates:
         return [], []
@@ -373,6 +431,7 @@ async def _vector_search(
     limit: int,
     org_id: Optional[str] = None,
     equipments: Optional[list[str]] = None,
+    dashboard_scope: Optional[str] = None,
 ) -> list[dict]:
     # Scope filtering is done as a $match stage AFTER $vectorSearch rather than
     # inside $vectorSearch.filter.
@@ -387,10 +446,11 @@ async def _vector_search(
             }
         }
     ]
-    scope = _scope_filter(user_id, org_id)
+    scope = _scope_filter(user_id, org_id, dashboard_scope)
     if equipments:
-        scope["equipment"] = {"$in": equipments}
-        
+        equipment_filter = {"equipment": {"$in": equipments}}
+        scope = {"$and": [scope or {}, equipment_filter]} if scope else equipment_filter
+
     if scope:
         pipeline.append({"$match": scope})
     pipeline.extend([
@@ -431,6 +491,7 @@ async def _keyword_search(
     limit: int,
     org_id: Optional[str] = None,
     equipments: Optional[list[str]] = None,
+    dashboard_scope: Optional[str] = None,
 ) -> list[dict]:
     """
     Case-insensitive regex search on chunk text.
@@ -447,9 +508,10 @@ async def _keyword_search(
 
     or_text_clauses = [{"text": {"$regex": t, "$options": "i"}} for t in tokens]
     
-    scope = _scope_filter(user_id, org_id)
+    scope = _scope_filter(user_id, org_id, dashboard_scope)
     if equipments:
-        scope["equipment"] = {"$in": equipments}
+        equipment_filter = {"equipment": {"$in": equipments}}
+        scope = {"$and": [scope or {}, equipment_filter]} if scope else equipment_filter
 
     if scope:
         query_filter = {"$and": [scope, {"$or": or_text_clauses}]}
@@ -479,7 +541,7 @@ async def _keyword_search(
         )
         if not results:
             total_visible = await db[RAG_CHUNKS_COLLECTION].count_documents(
-                _scope_filter(user_id, org_id)
+                _scope_filter(user_id, org_id, dashboard_scope)
             )
             logger.warning(
                 "[RAG RETRIEVER] keyword search: 0 results but user has %d visible chunks "

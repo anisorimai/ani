@@ -13,17 +13,18 @@ create separate indexes or per-unit pipelines.
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
+from auth.dependencies import get_current_user
+from config.settings import DATA_DIR, EMBEDDING_MODEL
 from database.mongodb import get_db
 from rag.equipment_registry import delete_equipment_if_empty, list_equipment_by_scope, upsert_equipment
 from rag.path_parser import parse_upload_path
-from services.storage_service import get_storage_service
+from services.storage_service import LocalStorageService, get_storage_service
 
 router = APIRouter()
 logger = logging.getLogger("voxa.router.documents")
@@ -120,12 +121,21 @@ class QueryRequest(BaseModel):
 
 
 @router.get("/")
-async def list_documents():
+async def list_documents(
+    scope: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
     """
     List all documents in the plant-wide equipment repository, joined with RAG index status.
     """
     storage = get_storage_service()
-    prefix = "equipment/"
+    scope_key = (scope or "").strip().lower()
+    prefix_map = {
+        "quality": "enterprise/quality/",
+        "manufacturing": "enterprise/manufacturing/",
+        "general": "enterprise/general/",
+    }
+    prefix = prefix_map.get(scope_key, "enterprise/")
     stored = storage.list_prefix(prefix=prefix)
 
     storage_keys = [d.key for d in stored]
@@ -143,6 +153,7 @@ async def list_documents():
                 "equipment": equipment,
                 "path": d.key,
                 "url": d.url,
+                "source_url": d.url,
                 "size": d.size,
                 "updated_at": d.updated_at.isoformat() if d.updated_at else None,
                 "index_status": "unknown",
@@ -157,14 +168,21 @@ async def list_documents():
     for record in rag_records:
         equipment = record.get("equipment", "General")
         filename = record.get("filename")
-        key = f"equipment/{equipment}/{filename}"
-        storage_obj = storage_map.get(key)
+        storage_candidates = [obj for obj in stored if obj.key.endswith(f"/{filename}")]
+        if equipment and equipment != "General":
+            storage_obj = next(
+                (obj for obj in storage_candidates if equipment.lower() in obj.key.lower()),
+                storage_candidates[0] if storage_candidates else None,
+            )
+        else:
+            storage_obj = storage_candidates[0] if storage_candidates else None
         docs.append({
             "doc_id": record.get("doc_id"),
             "filename": filename,
             "equipment": equipment,
             "path": storage_obj.key if storage_obj else None,
             "url": storage_obj.url if storage_obj else None,
+            "source_url": storage_obj.url if storage_obj else None,
             "size": storage_obj.size if storage_obj else None,
             "updated_at": storage_obj.updated_at.isoformat() if storage_obj and storage_obj.updated_at else None,
             "index_status": record.get("index_status"),
@@ -181,6 +199,10 @@ async def list_documents():
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    scope: str = Form(""),
+    equipment: Optional[str] = Form(None),
+    document_type: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Upload a document. Saves to storage under equipment folder, then indexes in background.
@@ -196,88 +218,129 @@ async def upload_document(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    raw_path = file.filename or ""
-    parsed = parse_upload_path(raw_path)
-    unit_tags = _derive_unit_tags(raw_path)
+    scope_value = (scope or "").strip().lower()
+    if scope_value not in {"quality", "manufacturing", "general"}:
+        raise HTTPException(status_code=400, detail="scope must be one of: quality, manufacturing, general")
 
-    stored = get_storage_service().save_bytes(parsed.storage_key, content, file.content_type)
+    equipment_value = (equipment or "").strip() if equipment is not None else ""
+    if scope_value in {"quality", "manufacturing"} and not equipment_value:
+        raise HTTPException(status_code=400, detail="equipment is required for quality and manufacturing uploads")
+
+    if scope_value == "general":
+        virtual_path = f"general/{file.filename}"
+        storage_path = f"enterprise/general/{file.filename}"
+        parsed_equipment = "General"
+    else:
+        virtual_path = f"{scope_value}/{equipment_value}/{file.filename}"
+        storage_path = f"enterprise/{scope_value}/{equipment_value}/{file.filename}"
+        parsed_equipment = equipment_value
+
+    parsed = parse_upload_path(virtual_path)
+    unit_tags = _derive_unit_tags(raw_path=file.filename or "")
+
+    storage = get_storage_service()
+    storage_warning = None
+    try:
+        stored = storage.save_bytes(storage_path, content, file.content_type)
+    except Exception as exc:
+        logger.error("[DOCUMENTS] Supabase upload failed for %s: %s", file.filename, exc, exc_info=True)
+        try:
+            stored = LocalStorageService(base_dir=DATA_DIR / "uploads").save_bytes(storage_path, content, file.content_type)
+            storage_warning = "Supabase unavailable, stored locally"
+        except Exception as local_exc:
+            logger.error("[DOCUMENTS] local fallback failed for %s: %s", file.filename, local_exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Storage upload failed") from local_exc
 
     if ext in _RAG_SUPPORTED:
         background_tasks.add_task(
             _run_indexing,
             "",
-            parsed.storage_key,
+            storage_path,
             parsed.filename,
             content,
-            parsed.dashboard_scope,
-            parsed.equipment_name,
-            parsed.document_type,
+            scope_value if scope_value != "general" else "enterprise",
+            parsed_equipment,
+            document_type or parsed.document_type,
             stored.url,
             unit_tags,
         )
         rag_status = "processing"
     else:
         rag_status = "not_supported"
-        logger.info("[DOCUMENTS] %s not RAG-indexed (extension %s not supported)", filename, ext)
+        logger.info("[DOCUMENTS] %s not RAG-indexed (extension %s not supported)", file.filename, ext)
 
     return {
         "status": "ok",
         "rag_status": rag_status,
         "document": {
             "filename": parsed.filename,
-            "equipment": parsed.equipment_name,
-            "dashboard_scope": parsed.dashboard_scope,
-            "document_type": parsed.document_type,
-            "storage_key": parsed.storage_key,
+            "equipment": parsed_equipment,
+            "dashboard_scope": scope_value if scope_value != "general" else "enterprise",
+            "document_type": document_type or parsed.document_type,
+            "storage_key": storage_path,
             "path": stored.key,
             "url": stored.url,
             "size": stored.size,
             "updated_at": stored.updated_at.isoformat() if stored.updated_at else None,
             "unit_tags": unit_tags,
+            "storage_warning": storage_warning,
         },
     }
 
 
 @router.delete("/{filepath:path}")
-async def delete_document(filepath: str):
+async def delete_document(filepath: str, current_user: dict = Depends(get_current_user)):
     """
     Delete a document from storage and remove all its RAG chunks and metadata.
     """
     db = get_db()
-    parsed = parse_upload_path(filepath)
+    normalized_path = (filepath or "").replace("\\", "/").strip("/")
+    parts = [part for part in normalized_path.split("/") if part]
+
+    if parts and parts[0] == "enterprise" and len(parts) >= 3:
+        storage_key = "/".join(parts)
+        dashboard_scope = parts[1] if parts[1] in {"quality", "manufacturing", "general"} else "enterprise"
+        equipment_name = parts[2] if dashboard_scope != "general" else "General"
+        filename = parts[-1]
+    else:
+        parsed = parse_upload_path(filepath)
+        storage_key = parsed.storage_key
+        dashboard_scope = parsed.dashboard_scope
+        equipment_name = parsed.equipment_name
+        filename = parsed.filename
 
     storage = get_storage_service()
     try:
-        storage.delete(parsed.storage_key)
+        storage.delete(storage_key)
     except Exception as exc:
-        logger.warning("[DOCUMENTS] storage delete failed for key %s: %s", parsed.storage_key, exc)
+        logger.warning("[DOCUMENTS] storage delete failed for key %s: %s", storage_key, exc)
 
     chunks_deleted = 0
     if db is not None:
         try:
             from rag.indexer import delete_document as rag_delete
-            chunks_deleted = await rag_delete(db, "", parsed.filename, equipment=parsed.equipment_name)
+            chunks_deleted = await rag_delete(db, "", filename, equipment=equipment_name)
         except Exception as exc:
-            logger.warning("[DOCUMENTS] RAG delete failed for %s: %s", parsed.filename, exc)
+            logger.warning("[DOCUMENTS] RAG delete failed for %s: %s", filename, exc)
 
     await delete_equipment_if_empty(
         db,
-        parsed.dashboard_scope,
-        parsed.equipment_name,
-        parsed.filename,
+        dashboard_scope,
+        equipment_name,
+        filename,
     )
 
     return {
         "status": "ok",
-        "filename": parsed.filename,
-        "equipment": parsed.equipment_name,
-        "dashboard_scope": parsed.dashboard_scope,
+        "filename": filename,
+        "equipment": equipment_name,
+        "dashboard_scope": dashboard_scope,
         "chunks_deleted": chunks_deleted,
     }
 
 
 @router.get("/equipment")
-async def list_all_equipment():
+async def list_all_equipment(current_user: dict = Depends(get_current_user)):
     db = get_db()
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -286,7 +349,7 @@ async def list_all_equipment():
 
 
 @router.get("/equipment/manufacturing")
-async def list_manufacturing_equipment():
+async def list_manufacturing_equipment(current_user: dict = Depends(get_current_user)):
     db = get_db()
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -295,7 +358,7 @@ async def list_manufacturing_equipment():
 
 
 @router.get("/equipment/quality")
-async def list_quality_equipment():
+async def list_quality_equipment(current_user: dict = Depends(get_current_user)):
     db = get_db()
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -304,7 +367,7 @@ async def list_quality_equipment():
 
 
 @router.get("/index-status")
-async def get_index_status():
+async def get_index_status(current_user: dict = Depends(get_current_user)):
     """
     Return RAG index health plant-wide.
     """
@@ -318,7 +381,7 @@ async def get_index_status():
 
 
 @router.get("/debug")
-async def debug_rag(query: str = ""):
+async def debug_rag(query: str = "", current_user: dict = Depends(get_current_user)):
     """
     Debug endpoint — inspect what is stored in rag_chunks plant-wide.
     """
@@ -378,7 +441,7 @@ async def debug_rag(query: str = ""):
 
 
 @router.post("/query")
-async def query_plant_knowledge(body: QueryRequest):
+async def query_plant_knowledge(body: QueryRequest, current_user: dict = Depends(get_current_user)):
     """
     Query the shared plant knowledge base with optional equipment scoping.
     """
@@ -406,7 +469,7 @@ async def query_plant_knowledge(body: QueryRequest):
     from orchestrator.semantic_expander import get_query_embedding
     from rag.retriever import retrieve_chunks
 
-    query_vector = await get_query_embedding(body.question) if os.getenv("EMBEDDING_MODEL") else None
+    query_vector = await get_query_embedding(body.question) if EMBEDDING_MODEL else None
     chunks, filenames = await retrieve_chunks(
         db,
         query_vector,
@@ -430,16 +493,21 @@ async def query_plant_knowledge(body: QueryRequest):
 
     context_blocks = []
     for idx, chunk in enumerate(chunks[:5], start=1):
-        source = f"{chunk.get('equipment', 'General')} / {chunk.get('filename', 'unknown')}"
-        context_blocks.append(f"[{idx}] Source: {source}\n{chunk.get('text', '')}")
+        metadata = chunk.get("metadata") or {}
+        source_url = metadata.get("source_url") or ""
+        source_label = f"{chunk.get('equipment', 'General')} / {chunk.get('filename', 'unknown')}"
+        if source_url:
+            source_label = f"{source_label} | url: {source_url}"
+        context_blocks.append(f"[{idx}] Source: {source_label}\n{chunk.get('text', '')}")
 
     llm = LLMClient()
     system_prompt = (
         f"You are answering questions from the plant knowledge base for {PLANT_NAME}. "
         "Use only the provided context. If the context is insufficient, say so plainly. "
         "Do not invent steps, dates, or equipment details. Keep the answer concise and "
-        "end every answer with a Sources section. Cite documents as [filename] "
-        "(Equipment: equipment_name) and only cite documents actually used."
+        "end every answer with a Sources section. When a source line contains a | url: value, "
+        "format the citation in the Sources section as [filename](url). Otherwise cite as "
+        "filename (Equipment: equipment_name). Only cite documents actually referenced in the answer."
     )
     answer = llm.complete([
         {"role": "system", "content": system_prompt},

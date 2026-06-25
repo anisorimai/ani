@@ -1,12 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   HiOutlineDocumentAdd, HiOutlineDocument, HiOutlineCloudUpload,
-  HiOutlineTrash, HiOutlineX, HiOutlineCheckCircle,
-  HiOutlineClock, HiOutlineRefresh, HiOutlineOfficeBuilding,
-  HiOutlineUser,
+  HiOutlineTrash, HiOutlineX,
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
-import useAuthStore from '../store/useAuthStore';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -30,11 +27,11 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 const STATUS_CONFIG = {
-  indexed:  { label: 'Indexed',    color: '#22c55e', bg: 'rgba(34,197,94,0.12)'  },
-  pending:  { label: 'Indexing…',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-  failed:   { label: 'Failed',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)'  },
-  missing:  { label: 'Missing',    color: '#6b7280', bg: 'rgba(107,114,128,0.12)'},
-  unknown:  { label: 'Pending',    color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  indexed: { label: 'Indexed', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  pending: { label: 'Indexing…', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  failed: { label: 'Failed', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  missing: { label: 'Missing', color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
+  unknown: { label: 'Pending', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
 };
 
 function StatusBadge({ status }) {
@@ -60,6 +57,14 @@ function formatSize(bytes) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+function inferDocType(filename) {
+  const lowerName = (filename || '').toLowerCase();
+  if (lowerName.includes('manual')) return 'manual';
+  if (lowerName.includes('datasheet')) return 'datasheet';
+  if (lowerName.includes('brochure')) return 'brochure';
+  return 'manual';
+}
+
 function DocList({ documents, loading, deleting, onDelete, emptyLabel, emptyHint }) {
   if (loading) {
     return (
@@ -77,107 +82,118 @@ function DocList({ documents, loading, deleting, onDelete, emptyLabel, emptyHint
       </div>
     );
   }
-  return documents.map((doc) => (
-    <div
-      key={doc.filename}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 12px', borderRadius: 10,
-        background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
-      }}
-    >
-      <HiOutlineDocument size={16} style={{ color: 'var(--ci-primary-solid)', flexShrink: 0 }} />
+  return documents.map((doc) => {
+    const scopeLabel = (doc.dashboard_scope || doc.scope || 'enterprise').toLowerCase();
+    const displayScope = scopeLabel === 'enterprise' || scopeLabel === 'general' ? 'General' : (scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1));
+    const displayEquipment = doc.equipment && doc.equipment !== 'General' ? doc.equipment : 'General';
+    const href = doc.url || doc.source_url;
+    return (
+      <div
+        key={doc.filename}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px', borderRadius: 10,
+          background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
+        }}
+      >
+        <HiOutlineDocument size={16} style={{ color: 'var(--ci-primary-solid)', flexShrink: 0 }} />
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <div
-          style={{
-            fontSize: '0.8rem', fontWeight: 500, color: 'var(--sb-txt)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}
-        >
-          {doc.filename}
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
-          {doc.size && (
-            <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
-              {formatSize(doc.size)}
-            </span>
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {href ? (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '0.8rem', fontWeight: 500, color: 'var(--ci-primary-solid)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                display: 'block', textDecoration: 'none',
+              }}
+            >
+              {doc.filename}
+            </a>
+          ) : (
+            <div
+              style={{
+                fontSize: '0.8rem', fontWeight: 500, color: 'var(--sb-txt)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+            >
+              {doc.filename}
+            </div>
           )}
-          {doc.chunk_count != null && (
-            <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
-              {doc.chunk_count} chunks
-            </span>
-          )}
-        </div>
-        {doc.index_status === 'failed' && doc.error_message && (
-          <div
-            style={{
-              fontSize: '0.62rem', color: '#ef4444', marginTop: 3,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}
-            title={doc.error_message}
-          >
-            {doc.error_message}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
+            {doc.size && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
+                {formatSize(doc.size)}
+              </span>
+            )}
+            {doc.chunk_count != null && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
+                {doc.chunk_count} chunks
+              </span>
+            )}
           </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)', marginTop: 2 }}>
+            {displayEquipment} • {displayScope}
+          </div>
+          {doc.index_status === 'failed' && doc.error_message && (
+            <div
+              style={{
+                fontSize: '0.62rem', color: '#ef4444', marginTop: 3,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+              title={doc.error_message}
+            >
+              {doc.error_message}
+            </div>
+          )}
+        </div>
+
+        <StatusBadge status={doc.index_status || 'unknown'} />
+
+        {onDelete && (
+          <button
+            disabled={deleting === doc.filename}
+            style={{
+              width: 26, height: 26, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', borderRadius: 6, border: 'none',
+              background: 'transparent', color: 'var(--sb-txt3)',
+              cursor: deleting === doc.filename ? 'default' : 'pointer',
+              flexShrink: 0, opacity: deleting === doc.filename ? 0.4 : 1,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = '#ef4444';
+              e.currentTarget.style.background = 'rgba(239,68,68,0.12)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--sb-txt3)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+            onClick={() => onDelete(doc.filename)}
+            title="Remove document"
+          >
+            <HiOutlineTrash size={13} />
+          </button>
         )}
       </div>
-
-      <StatusBadge status={doc.index_status || 'unknown'} />
-
-      {onDelete && (
-        <button
-          disabled={deleting === doc.filename}
-          style={{
-            width: 26, height: 26, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', borderRadius: 6, border: 'none',
-            background: 'transparent', color: 'var(--sb-txt3)',
-            cursor: deleting === doc.filename ? 'default' : 'pointer',
-            flexShrink: 0, opacity: deleting === doc.filename ? 0.4 : 1,
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.color = '#ef4444';
-            e.currentTarget.style.background = 'rgba(239,68,68,0.12)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.color = 'var(--sb-txt3)';
-            e.currentTarget.style.background = 'transparent';
-          }}
-          onClick={() => onDelete(doc.filename)}
-          title="Remove document"
-        >
-          <HiOutlineTrash size={13} />
-        </button>
-      )}
-    </div>
-  ));
+    );
+  });
 }
 
 export default function DocumentUpload({ isOpen, onClose }) {
-  const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.is_admin === true;
-
-  const [tab, setTab] = useState('personal');
-
-  // Personal docs state
   const [documents, setDocuments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-
-  // Org docs state (admin only)
-  const [orgDocs, setOrgDocs] = useState([]);
-  const [orgUploading, setOrgUploading] = useState(false);
-  const [orgLoading, setOrgLoading] = useState(false);
-  const [orgDeleting, setOrgDeleting] = useState(null);
-  const [orgDragOver, setOrgDragOver] = useState(false);
+  const [scope, setScope] = useState('');
+  const [equipment, setEquipment] = useState('');
+  const [docType, setDocType] = useState('');
+  const [selectedFileName, setSelectedFileName] = useState('');
 
   const fileInputRef = useRef(null);
-  const orgFileInputRef = useRef(null);
   const pollRef = useRef(null);
-  const orgPollRef = useRef(null);
-
-  // ── Personal docs ─────────────────────────────────────────────────────────
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -215,10 +231,26 @@ export default function DocumentUpload({ isOpen, onClose }) {
       toast.error(`Unsupported file format "${ext}". Supported: PDF, Word, images (PNG/JPG/WebP…), CSV, JSON, text.`);
       return;
     }
+    if (!scope) {
+      toast.error('Please select a repository before uploading.');
+      return;
+    }
+    if ((scope === 'quality' || scope === 'manufacturing') && !equipment.trim()) {
+      toast.error('Please enter an equipment name for this repository.');
+      return;
+    }
+    if (!docType) {
+      toast.error('Please choose a document type.');
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('scope', scope);
+      if (scope !== 'general') formData.append('equipment', equipment.trim());
+      formData.append('document_type', docType);
       const res = await fetch(`${API_BASE}/documents/upload`, {
         method: 'POST',
         headers: authHeaders(),
@@ -229,6 +261,10 @@ export default function DocumentUpload({ isOpen, onClose }) {
         throw new Error(err.detail || 'Upload failed');
       }
       toast.success(`"${file.name}" uploaded — indexing in background`);
+      setScope('');
+      setEquipment('');
+      setDocType('');
+      setSelectedFileName('');
       await fetchDocuments();
       startPolling();
     } catch (err) {
@@ -255,90 +291,10 @@ export default function DocumentUpload({ isOpen, onClose }) {
     }
   };
 
-  // ── Org docs (admin only) ─────────────────────────────────────────────────
-
-  const fetchOrgDocuments = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/documents/org`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        const docs = Array.isArray(data) ? data : (data?.documents || []);
-        setOrgDocs(docs);
-        return docs;
-      }
-    } catch (err) {
-      console.warn('Failed to fetch org documents:', err);
-    }
-    return [];
-  }, []);
-
-  const startOrgPolling = useCallback(() => {
-    if (orgPollRef.current) return;
-    orgPollRef.current = setInterval(async () => {
-      const docs = await fetchOrgDocuments();
-      const stillPending = docs.some(
-        (d) => d.index_status === 'pending' || d.index_status === 'unknown' || !d.index_status
-      );
-      if (!stillPending) {
-        clearInterval(orgPollRef.current);
-        orgPollRef.current = null;
-      }
-    }, 3000);
-  }, [fetchOrgDocuments]);
-
-  const handleOrgUpload = async (file) => {
-    if (!file) return;
-    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
-      toast.error(`Unsupported file format "${ext}".`);
-      return;
-    }
-    setOrgUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`${API_BASE}/documents/org/upload`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Upload failed');
-      }
-      toast.success(`"${file.name}" shared with your organisation — indexing in background`);
-      await fetchOrgDocuments();
-      startOrgPolling();
-    } catch (err) {
-      toast.error(err.message || 'Upload failed');
-    } finally {
-      setOrgUploading(false);
-    }
-  };
-
-  const handleOrgDelete = async (filename) => {
-    setOrgDeleting(filename);
-    try {
-      const res = await fetch(
-        `${API_BASE}/documents/org/${encodeURIComponent(filename)}`,
-        { method: 'DELETE', headers: authHeaders() }
-      );
-      if (!res.ok) throw new Error('Delete failed');
-      toast.success(`"${filename}" removed from organisation`);
-      setOrgDocs((prev) => prev.filter((d) => d.filename !== filename));
-    } catch (err) {
-      toast.error(err.message || 'Delete failed');
-    } finally {
-      setOrgDeleting(null);
-    }
-  };
-
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
-
   useEffect(() => {
     if (!isOpen) {
-      clearInterval(pollRef.current);    pollRef.current = null;
-      clearInterval(orgPollRef.current); orgPollRef.current = null;
+      clearInterval(pollRef.current);
+      pollRef.current = null;
       return;
     }
 
@@ -350,32 +306,21 @@ export default function DocumentUpload({ isOpen, onClose }) {
       }
     });
 
-    if (isAdmin) {
-      setOrgLoading(true);
-      fetchOrgDocuments().then((docs) => {
-        setOrgLoading(false);
-        if (docs.some((d) => !d.index_status || d.index_status === 'pending' || d.index_status === 'unknown')) {
-          startOrgPolling();
-        }
-      });
-    }
-
     return () => {
-      clearInterval(pollRef.current);    pollRef.current = null;
-      clearInterval(orgPollRef.current); orgPollRef.current = null;
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     };
-  }, [isOpen, isAdmin, fetchDocuments, fetchOrgDocuments, startPolling, startOrgPolling]);
+  }, [isOpen, fetchDocuments, startPolling]);
 
   if (!isOpen) return null;
 
   const hasPending = documents.some(
     (d) => d.index_status === 'pending' || d.index_status === 'unknown' || !d.index_status
   );
-  const hasOrgPending = orgDocs.some(
-    (d) => d.index_status === 'pending' || d.index_status === 'unknown' || !d.index_status
-  );
-
-  const isOrgTab = isAdmin && tab === 'org';
+  const isUploadDisabled = !scope || ((scope === 'quality' || scope === 'manufacturing') && !equipment.trim()) || !docType;
+  const previewLine = selectedFileName && scope && docType && ((scope === 'general') || equipment.trim())
+    ? `${scope === 'general' ? 'general' : scope} / ${scope === 'general' ? 'General' : (equipment.trim() || 'Equipment')} / ${selectedFileName} [${docType}]`
+    : null;
 
   return (
     <div
@@ -396,7 +341,6 @@ export default function DocumentUpload({ isOpen, onClose }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header ── */}
         <div
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -406,7 +350,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--sb-txt)' }}>
             <HiOutlineDocumentAdd size={18} style={{ color: 'var(--ci-primary-solid)' }} />
             <span style={{ fontSize: '0.9375rem', fontWeight: 600 }}>Knowledge Documents</span>
-            {(hasPending || hasOrgPending) && (
+            {hasPending && (
               <span style={{ fontSize: '0.65rem', color: '#f59e0b', fontWeight: 600 }}>
                 • Indexing…
               </span>
@@ -426,98 +370,117 @@ export default function DocumentUpload({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* ── Tab bar (admin only) ── */}
-        {isAdmin && (
-          <div
+        <div style={{ margin: '16px 20px 0', display: 'grid', gap: 8 }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--sb-txt2)', fontWeight: 600 }}>
+            Repository
+          </label>
+          <select
+            value={scope}
+            onChange={(e) => {
+              const nextScope = e.target.value;
+              setScope(nextScope);
+              if (nextScope === 'general') setEquipment('');
+            }}
             style={{
-              display: 'flex', borderBottom: '1px solid var(--sb-brd)',
-              padding: '0 20px', flexShrink: 0, gap: 2,
+              width: '100%', padding: '8px 10px', borderRadius: 8,
+              background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
+              color: 'var(--sb-txt)', fontSize: '0.8rem',
             }}
           >
-            {[
-              { key: 'personal', icon: <HiOutlineUser size={13} />, label: 'My Documents' },
-              { key: 'org',      icon: <HiOutlineOfficeBuilding size={13} />, label: 'Org Shared' },
-            ].map(({ key, icon, label }) => {
-              const active = tab === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setTab(key)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '10px 14px', border: 'none', background: 'transparent',
-                    cursor: 'pointer', fontSize: '0.8125rem', fontWeight: active ? 600 : 400,
-                    color: active ? 'var(--ci-primary-solid)' : 'var(--sb-txt2)',
-                    borderBottom: active ? '2px solid var(--ci-primary-solid)' : '2px solid transparent',
-                    marginBottom: -1, transition: 'color 0.15s',
-                  }}
-                >
-                  {icon}
-                  {label}
-                  {key === 'org' && hasOrgPending && (
-                    <span style={{ fontSize: '0.6rem', color: '#f59e0b', fontWeight: 700 }}>●</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
+            <option value="">Select repository</option>
+            <option value="quality">Quality</option>
+            <option value="manufacturing">Manufacturing</option>
+            <option value="general">General</option>
+          </select>
 
-        {/* ── Org tab info banner ── */}
-        {isOrgTab && (
-          <div
+          {(scope === 'quality' || scope === 'manufacturing') && (
+            <>
+              <label style={{ fontSize: '0.75rem', color: 'var(--sb-txt2)', fontWeight: 600 }}>
+                Equipment
+              </label>
+              <input
+                value={equipment}
+                onChange={(e) => setEquipment(e.target.value)}
+                placeholder="e.g. HPLC, pH Meter, Reactor 1"
+                style={{
+                  width: '100%', padding: '8px 10px', borderRadius: 8,
+                  background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
+                  color: 'var(--sb-txt)', fontSize: '0.8rem',
+                }}
+              />
+            </>
+          )}
+
+          <label style={{ fontSize: '0.75rem', color: 'var(--sb-txt2)', fontWeight: 600 }}>
+            Document Type
+          </label>
+          <select
+            value={docType}
+            onChange={(e) => setDocType(e.target.value)}
             style={{
-              margin: '12px 20px 0',
-              padding: '10px 14px',
-              borderRadius: 10,
-              background: 'color-mix(in srgb, var(--ci-primary-solid) 8%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--ci-primary-solid) 25%, transparent)',
-              fontSize: '0.74rem',
-              color: 'var(--sb-txt2)',
-              lineHeight: 1.5,
-              flexShrink: 0,
+              width: '100%', padding: '8px 10px', borderRadius: 8,
+              background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
+              color: 'var(--sb-txt)', fontSize: '0.8rem',
             }}
           >
-            Documents uploaded here are shared with <strong style={{ color: 'var(--sb-txt)' }}>all members</strong> of your organisation. They are automatically included in every user's knowledge base.
-          </div>
-        )}
+            <option value="">Select document type</option>
+            <option value="manual">Manual</option>
+            <option value="datasheet">Datasheet</option>
+            <option value="brochure">Product Brochure</option>
+          </select>
 
-        {/* ── Drop zone ── */}
+          {previewLine && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--sb-txt2)', paddingTop: 2 }}>
+              {previewLine}
+            </div>
+          )}
+        </div>
+
         <div
           style={{
             margin: '16px 20px 0',
-            border: `2px dashed ${(isOrgTab ? orgDragOver : dragOver) ? 'var(--ci-primary-solid)' : 'var(--sb-brd)'}`,
+            border: `2px dashed ${dragOver ? 'var(--ci-primary-solid)' : 'var(--sb-brd)'}`,
             borderRadius: 12, padding: '20px 16px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-            background: (isOrgTab ? orgDragOver : dragOver)
-              ? 'color-mix(in srgb, var(--ci-primary-solid) 6%, transparent)'
-              : 'var(--sb-hover)',
-            cursor: (isOrgTab ? orgUploading : uploading) ? 'default' : 'pointer',
+            background: dragOver ? 'var(--sb-hover)' : 'var(--sb-bg)',
+            cursor: uploading || isUploadDisabled ? 'default' : 'pointer',
             transition: 'all 0.15s',
-            opacity: (isOrgTab ? orgUploading : uploading) ? 0.7 : 1,
+            opacity: uploading || isUploadDisabled ? 0.65 : 1,
             flexShrink: 0,
           }}
-          onDragOver={(e) => { e.preventDefault(); isOrgTab ? setOrgDragOver(true) : setDragOver(true); }}
-          onDragLeave={() => isOrgTab ? setOrgDragOver(false) : setDragOver(false)}
+          onDragOver={(e) => { e.preventDefault(); if (!uploading && !isUploadDisabled) setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
           onDrop={(e) => {
             e.preventDefault();
-            isOrgTab ? setOrgDragOver(false) : setDragOver(false);
+            setDragOver(false);
             const file = e.dataTransfer.files?.[0];
-            if (file) isOrgTab ? handleOrgUpload(file) : handleUpload(file);
+            if (file) handleUpload(file);
           }}
           onClick={() => {
-            if (isOrgTab ? orgUploading : uploading) return;
-            isOrgTab ? orgFileInputRef.current?.click() : fileInputRef.current?.click();
+            if (uploading || isUploadDisabled) return;
+            fileInputRef.current?.click();
           }}
         >
-          <input ref={fileInputRef} type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} style={{ display: 'none' }} />
-          <input ref={orgFileInputRef} type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleOrgUpload(f); e.target.value = ''; }} style={{ display: 'none' }} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                setSelectedFileName(f.name);
+                setDocType((prev) => prev || inferDocType(f.name));
+                handleUpload(f);
+              }
+              e.target.value = '';
+            }}
+            style={{ display: 'none' }}
+          />
 
           <HiOutlineCloudUpload
             size={28}
-            style={{ color: 'var(--ci-primary-solid)', opacity: (isOrgTab ? orgUploading : uploading) ? 0.6 : 1 }}
+            style={{ color: 'var(--ci-primary-solid)', opacity: uploading ? 0.6 : 1 }}
           />
-          {(isOrgTab ? orgUploading : uploading) ? (
+          {uploading ? (
             <p style={{ fontSize: '0.8125rem', color: 'var(--sb-txt2)', margin: 0 }}>
               Uploading and queuing for indexing…
             </p>
@@ -533,35 +496,22 @@ export default function DocumentUpload({ isOpen, onClose }) {
           )}
         </div>
 
-        {/* ── Document list ── */}
         <div
           style={{
             flex: 1, overflowY: 'auto', padding: '12px 20px 16px',
             display: 'flex', flexDirection: 'column', gap: 6,
           }}
         >
-          {isOrgTab ? (
-            <DocList
-              documents={orgDocs}
-              loading={orgLoading}
-              deleting={orgDeleting}
-              onDelete={handleOrgDelete}
-              emptyLabel="No shared documents yet"
-              emptyHint="Upload a file above to share it with your entire organisation"
-            />
-          ) : (
-            <DocList
-              documents={documents}
-              loading={loading}
-              deleting={deleting}
-              onDelete={handleDelete}
-              emptyLabel="No documents uploaded yet"
-              emptyHint="Upload a file above to add it to the knowledge base"
-            />
-          )}
+          <DocList
+            documents={documents}
+            loading={loading}
+            deleting={deleting}
+            onDelete={handleDelete}
+            emptyLabel="No documents uploaded yet"
+            emptyHint="Upload a file above to add it to the knowledge base"
+          />
         </div>
 
-        {/* ── Footer note ── */}
         <div
           style={{
             padding: '10px 20px 14px', borderTop: '1px solid var(--sb-brd)',
@@ -569,9 +519,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
           }}
         >
           <p style={{ fontSize: '0.7rem', color: 'var(--sb-txt3)', margin: 0, lineHeight: 1.5 }}>
-            {isOrgTab
-              ? 'Org documents are chunked, embedded, and made available to all users in your organisation.'
-              : 'Uploaded documents are chunked, embedded, and stored in the RAG knowledge base. Once indexed, their content is automatically retrieved when relevant to your questions.'}
+            Uploaded documents are chunked, embedded, and stored in the shared enterprise knowledge base. Once indexed, their content is automatically retrieved when relevant to your questions.
           </p>
         </div>
       </div>
