@@ -74,7 +74,7 @@ async def index_document(
     no embedding API calls were made.
     """
     doc_id = make_doc_id(equipment, filename)
-    department_priority = {"quality": 3, "manufacturing": 2, "enterprise": 1}.get(
+    department_priority = {"quality": 3, "production": 2, "enterprise": 1}.get(
         dashboard_scope.lower(), 1
     )
 

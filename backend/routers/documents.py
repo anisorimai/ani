@@ -13,6 +13,7 @@ create separate indexes or per-unit pipelines.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -52,9 +53,9 @@ def _derive_unit_tags(raw_path: str) -> list[str]:
     """Derive optional unit tags from path segments without creating hierarchy."""
     normalized_parts = [p.strip().lower() for p in raw_path.replace("\\", "/").split("/") if p.strip()]
     tag_map = {
-        "manufacturing": "Manufacturing",
-        "qc": "QC",
-        "production": "Production",
+        "production":  "Production",
+        "quality":     "Quality",
+        "qc":          "QC",
         "engineering": "Engineering",
     }
     tags: list[str] = []
@@ -131,9 +132,9 @@ async def list_documents(
     storage = get_storage_service()
     scope_key = (scope or "").strip().lower()
     prefix_map = {
-        "quality": "enterprise/quality/",
-        "manufacturing": "enterprise/manufacturing/",
-        "general": "enterprise/general/",
+        "quality":    "enterprise/quality/",
+        "production": "enterprise/production/",
+        "general":    "enterprise/general/",
     }
     prefix = prefix_map.get(scope_key, "enterprise/")
     stored = storage.list_prefix(prefix=prefix)
@@ -218,13 +219,15 @@ async def upload_document(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    scope_value = (scope or "").strip().lower()
-    if scope_value not in {"quality", "manufacturing", "general"}:
-        raise HTTPException(status_code=400, detail="scope must be one of: quality, manufacturing, general")
+    scope_value = (scope or "general").strip().lower()
+    if not scope_value:
+        scope_value = "general"
+    if scope_value not in {"quality", "production", "general"}:
+        raise HTTPException(status_code=400, detail="scope must be one of: quality, production, general")
 
     equipment_value = (equipment or "").strip() if equipment is not None else ""
-    if scope_value in {"quality", "manufacturing"} and not equipment_value:
-        raise HTTPException(status_code=400, detail="equipment is required for quality and manufacturing uploads")
+    if scope_value in {"quality", "production"} and not equipment_value:
+        raise HTTPException(status_code=400, detail="equipment is required for quality and production uploads")
 
     if scope_value == "general":
         virtual_path = f"general/{file.filename}"
@@ -299,7 +302,7 @@ async def delete_document(filepath: str, current_user: dict = Depends(get_curren
 
     if parts and parts[0] == "enterprise" and len(parts) >= 3:
         storage_key = "/".join(parts)
-        dashboard_scope = parts[1] if parts[1] in {"quality", "manufacturing", "general"} else "enterprise"
+        dashboard_scope = parts[1] if parts[1] in {"quality", "production", "general"} else "enterprise"
         equipment_name = parts[2] if dashboard_scope != "general" else "General"
         filename = parts[-1]
     else:
@@ -323,12 +326,13 @@ async def delete_document(filepath: str, current_user: dict = Depends(get_curren
         except Exception as exc:
             logger.warning("[DOCUMENTS] RAG delete failed for %s: %s", filename, exc)
 
-    await delete_equipment_if_empty(
-        db,
-        dashboard_scope,
-        equipment_name,
-        filename,
-    )
+    if db is not None:
+        await delete_equipment_if_empty(
+            db,
+            dashboard_scope,
+            equipment_name,
+            filename,
+        )
 
     return {
         "status": "ok",
@@ -348,13 +352,13 @@ async def list_all_equipment(current_user: dict = Depends(get_current_user)):
     return {"equipment": equipment, "total": len(equipment)}
 
 
-@router.get("/equipment/manufacturing")
-async def list_manufacturing_equipment(current_user: dict = Depends(get_current_user)):
+@router.get("/equipment/production")
+async def list_production_equipment(current_user: dict = Depends(get_current_user)):
     db = get_db()
     if db is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    equipment = await list_equipment_by_scope(db, "manufacturing")
-    return {"equipment": equipment, "total": len(equipment), "dashboard_scope": "manufacturing"}
+    equipment = await list_equipment_by_scope(db, "production")
+    return {"equipment": equipment, "total": len(equipment), "dashboard_scope": "production"}
 
 
 @router.get("/equipment/quality")

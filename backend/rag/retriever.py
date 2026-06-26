@@ -156,10 +156,10 @@ def _scope_filter(
                 {"metadata.dashboard_scope": {"$in": ["general", "enterprise"]}},
             ]
         }
-    if normalized_scope == "manufacturing":
+    if normalized_scope == "production":
         return {
             "$or": [
-                {"metadata.dashboard_scope": "manufacturing"},
+                {"metadata.dashboard_scope": "production"},
                 {"metadata.dashboard_scope": {"$in": ["general", "enterprise"]}},
             ]
         }

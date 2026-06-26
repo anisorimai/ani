@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   HiOutlineDocumentAdd, HiOutlineDocument, HiOutlineCloudUpload,
   HiOutlineTrash, HiOutlineX,
@@ -27,38 +27,30 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 const SCOPE_OPTIONS = [
-  { value: '',              label: '— Select scope —'   },
-  { value: 'quality',       label: 'Quality'            },
-  { value: 'manufacturing', label: 'Manufacturing'      },
-  { value: 'general',       label: 'General'            },
+  { value: '', label: 'General' },
+  { value: 'quality', label: 'Quality' },
+  { value: 'production', label: 'Production' },
+  { value: 'packaging', label: 'Packaging' },
+  { value: 'logistics', label: 'Logistics' },
 ];
 
 const DOC_TYPE_OPTIONS = [
-  '',
-  'Manual',
-  'Datasheet',
-  'Product Brochure',
-  'Other',
+  '', 'Brochure', 'Catalog', 'Certificate', 'Datasheet', 'Drawing',
+  'Form', 'Manual', 'Policy', 'Protocol', 'Report', 'SOP', 'Specification', 'Other',
 ];
 
 const fieldStyle = {
-  width: '100%',
-  padding: '7px 10px',
-  borderRadius: 8,
-  background: 'var(--sb-bg)',
-  border: '1px solid var(--sb-brd)',
-  color: 'var(--sb-txt)',
-  fontSize: '0.8rem',
-  outline: 'none',
-  boxSizing: 'border-box',
+  width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: '0.8125rem',
+  color: 'var(--sb-txt)', background: 'var(--sb-hover)',
+  border: '1px solid var(--sb-brd)', outline: 'none', boxSizing: 'border-box',
 };
 
 const STATUS_CONFIG = {
-  indexed: { label: 'Indexed',   color: '#22c55e', bg: 'rgba(34,197,94,0.12)'  },
+  indexed: { label: 'Indexed', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
   pending: { label: 'Indexing…', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
-  failed:  { label: 'Failed',    color: '#ef4444', bg: 'rgba(239,68,68,0.12)'  },
-  missing: { label: 'Missing',   color: 'var(--txt2)', bg: 'var(--brd2)'       },
-  unknown: { label: 'Pending',   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  failed: { label: 'Failed', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  missing: { label: 'Missing', color: 'var(--txt2)', bg: 'var(--brd2)' },
+  unknown: { label: 'Pending', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
 };
 
 function StatusBadge({ status }) {
@@ -84,16 +76,16 @@ function formatSize(bytes) {
 
 function inferDocType(filename) {
   const lowerName = (filename || '').toLowerCase();
-  if (lowerName.includes('manual'))    return 'Manual';
+  if (lowerName.includes('manual')) return 'Manual';
   if (lowerName.includes('datasheet')) return 'Datasheet';
-  if (lowerName.includes('brochure'))  return 'Product Brochure';
+  if (lowerName.includes('brochure')) return 'Product Brochure';
   return 'Manual';
 }
 
 // ── MetaFields ────────────────────────────────────────────────────────────────
 
 function MetaFields({ scope, equipment, docType, docTypeOther, onScope, onEquipment, onDocType, onDocTypeOther }) {
-  const needsEquipment = scope === 'quality' || scope === 'manufacturing';
+  const needsEquipment = scope === 'quality' || scope === 'production';
 
   return (
     <div style={{
@@ -120,7 +112,7 @@ function MetaFields({ scope, equipment, docType, docTypeOther, onScope, onEquipm
             const next = e.target.value;
             onScope(next);
             // clear equipment when switching to general
-            if (next === 'general') onEquipment('');
+            if (!next) onEquipment('');
           }}
           style={{ ...fieldStyle, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}
         >
@@ -196,116 +188,116 @@ function DocList({ documents, loading, deleting, onDelete, emptyLabel, emptyHint
       </div>
     );
   }
-return documents.map((doc) => {
-  const scopeLabel = (doc.dashboard_scope || doc.scope || 'enterprise').toLowerCase();
-  const displayScope = scopeLabel === 'enterprise' || scopeLabel === 'general'
-    ? 'General'
-    : (scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1));
-  const displayEquipment = doc.equipment && doc.equipment !== 'General' ? doc.equipment : 'General';
-  const href = doc.url || doc.source_url;
+  return documents.map((doc) => {
+    const scopeLabel = (doc.dashboard_scope || doc.scope || 'enterprise').toLowerCase();
+    const displayScope = scopeLabel === 'enterprise' || scopeLabel === 'general'
+      ? 'General'
+      : (scopeLabel.charAt(0).toUpperCase() + scopeLabel.slice(1));
+    const displayEquipment = doc.equipment && doc.equipment !== 'General' ? doc.equipment : 'General';
+    const href = doc.url || doc.source_url;
 
-  return (
-    <div
-      key={doc.filename}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 12px', borderRadius: 10,
-        background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
-      }}
-    >
-      <HiOutlineDocument size={16} style={{ color: 'var(--ci-primary-solid)', flexShrink: 0 }} />
+    return (
+      <div
+        key={doc.filename}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px', borderRadius: 10,
+          background: 'var(--sb-hover)', border: '1px solid var(--sb-brd)',
+        }}
+      >
+        <HiOutlineDocument size={16} style={{ color: 'var(--ci-primary-solid)', flexShrink: 0 }} />
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {href ? (
-          <a                             
-            href={href} target="_blank" rel="noopener noreferrer"
-            style={{
-              fontSize: '0.8rem', fontWeight: 500, color: 'var(--ci-primary-solid)',
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {href ? (
+            <a
+              href={href} target="_blank" rel="noopener noreferrer"
+              style={{
+                fontSize: '0.8rem', fontWeight: 500, color: 'var(--ci-primary-solid)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                display: 'block', textDecoration: 'none',
+              }}
+            >
+              {doc.filename}
+            </a>
+          ) : (
+            <div style={{
+              fontSize: '0.8rem', fontWeight: 500, color: 'var(--sb-txt)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              display: 'block', textDecoration: 'none',
-            }}
-          >
-            {doc.filename}
-          </a>
-        ) : (
-          <div style={{
-            fontSize: '0.8rem', fontWeight: 500, color: 'var(--sb-txt)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {doc.filename}
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
-          {doc.size && (
-            <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
-              {formatSize(doc.size)}
-            </span>
+            }}>
+              {doc.filename}
+            </div>
           )}
-          {doc.chunk_count != null && (
-            <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
-              {doc.chunk_count} chunks
-            </span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
+            {doc.size && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
+                {formatSize(doc.size)}
+              </span>
+            )}
+            {doc.chunk_count != null && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)' }}>
+                {doc.chunk_count} chunks
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)', marginTop: 2 }}>
+            {displayEquipment} • {displayScope}
+          </div>
+          {doc.index_status === 'failed' && doc.error_message && (
+            <div
+              style={{
+                fontSize: '0.62rem', color: '#ef4444', marginTop: 3,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+              title={doc.error_message}
+            >
+              {doc.error_message}
+            </div>
           )}
         </div>
-        <div style={{ fontSize: '0.65rem', color: 'var(--sb-txt3)', marginTop: 2 }}>
-          {displayEquipment} • {displayScope}
-        </div>
-        {doc.index_status === 'failed' && doc.error_message && (
-          <div
+
+        <StatusBadge status={doc.index_status || 'unknown'} />
+
+        {onDelete && (
+          <button
+            disabled={deleting === doc.filename}
             style={{
-              fontSize: '0.62rem', color: '#ef4444', marginTop: 3,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              width: 26, height: 26, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', borderRadius: 6, border: 'none',
+              background: 'transparent', color: 'var(--sb-txt3)',
+              cursor: deleting === doc.filename ? 'default' : 'pointer',
+              flexShrink: 0, opacity: deleting === doc.filename ? 0.4 : 1,
             }}
-            title={doc.error_message}
+            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--sb-txt3)'; e.currentTarget.style.background = 'transparent'; }}
+            onClick={() => onDelete(doc.filename)}
+            title="Remove document"
           >
-            {doc.error_message}
-          </div>
+            <HiOutlineTrash size={13} />
+          </button>
         )}
       </div>
-
-      <StatusBadge status={doc.index_status || 'unknown'} />
-
-      {onDelete && (
-        <button
-          disabled={deleting === doc.filename}
-          style={{
-            width: 26, height: 26, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', borderRadius: 6, border: 'none',
-            background: 'transparent', color: 'var(--sb-txt3)',
-            cursor: deleting === doc.filename ? 'default' : 'pointer',
-            flexShrink: 0, opacity: deleting === doc.filename ? 0.4 : 1,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--sb-txt3)'; e.currentTarget.style.background = 'transparent'; }}
-          onClick={() => onDelete(doc.filename)}
-          title="Remove document"
-        >
-          <HiOutlineTrash size={13} />
-        </button>
-      )}
-    </div>
-  );
-});
+    );
+  });
 }
 
 // ── DocumentUpload ────────────────────────────────────────────────────────────
 
 export default function DocumentUpload({ isOpen, onClose }) {
-  const [documents,        setDocuments]        = useState([]);
-  const [uploading,        setUploading]        = useState(false);
-  const [loading,          setLoading]          = useState(false);
-  const [deleting,         setDeleting]         = useState(null);
-  const [dragOver,         setDragOver]         = useState(false);
-  const [pendingFile,      setPendingFile]      = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
 
   // Metadata state
-  const [scope,            setScope]            = useState('');
-  const [equipment,        setEquipment]        = useState('');
-  const [docType,          setDocType]          = useState('');
-  const [docTypeOther,     setDocTypeOther]     = useState('');
+  const [scope, setScope] = useState('');
+  const [equipment, setEquipment] = useState('');
+  const [docType, setDocType] = useState('');
+  const [docTypeOther, setDocTypeOther] = useState('');
 
   const fileInputRef = useRef(null);
-  const pollRef      = useRef(null);
+  const pollRef = useRef(null);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -361,7 +353,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
 
   const isUploadDisabled =
     !scope ||
-    ((scope === 'quality' || scope === 'manufacturing') && !equipment.trim()) ||
+    ((scope === 'quality' || scope === 'production') && !equipment.trim()) ||
     !resolvedDocType;
 
   const handleUpload = async () => {

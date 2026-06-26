@@ -4,16 +4,14 @@ from pathlib import Path
 
 
 _SCOPE_MAP = {
-    "manufacturing": "manufacturing",
-    "manufacture": "manufacturing",
-    "production": "manufacturing",
-    "quality": "quality",
-    "qc": "quality",
-    "qa": "quality",
-    "qaqc": "quality",
+    "production": "production",
+    "quality":    "quality",
+    "qc":         "quality",
+    "qa":         "quality",
+    "qaqc":       "quality",
     "enterprise": "enterprise",
-    "general": "enterprise",
-    "plant": "enterprise",
+    "general":    "enterprise",
+    "plant":      "enterprise",
 }
 
 _DOCTYPE_PATTERNS = [
