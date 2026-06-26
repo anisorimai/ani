@@ -437,7 +437,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
     >
       <div
         style={{
-          width: '100%', maxWidth: 480, maxHeight: '92dvh',
+          width: '92vw', maxWidth: 480, maxHeight: '92dvh',
           display: 'flex', flexDirection: 'column',
           background: 'var(--sb-bg)', border: '1px solid var(--sb-brd)',
           borderRadius: 16, overflow: 'hidden',

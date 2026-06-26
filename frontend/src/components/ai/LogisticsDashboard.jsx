@@ -7,8 +7,12 @@ import { getThemeTokens } from '../../utils/themeTokens';
 const CARRIER_PERF = [
   { carrier: 'FastTrack',   efficiency: 96, deliveries: 42 },
   { carrier: 'MedExpress',  efficiency: 91, deliveries: 35 },
+  { carrier: 'Global Freight', efficiency: 94, deliveries: 31 },
   { carrier: 'PharmaLogix', efficiency: 88, deliveries: 28 },
+  { carrier: 'Reliable Trans', efficiency: 87, deliveries: 22 },
+  { carrier: 'Express Line', efficiency: 89, deliveries: 25 },
   { carrier: 'SwiftCargo',  efficiency: 84, deliveries: 19 },
+  { carrier: 'Oceanic Ship', efficiency: 82, deliveries: 15 },
 ];
 
 let _sparkId = 0;
@@ -69,7 +73,7 @@ function ChartTip({ active, payload, label, T }) {
 const CSS = `
   .log-kpi  { display:grid; grid-template-columns:repeat(2,1fr); gap:10px }
   @media(min-width:640px) { .log-kpi { grid-template-columns:repeat(4,1fr) } }
-  .log-main { display:grid; grid-template-columns:1fr; gap:12px }
+  .log-main { display:grid; grid-template-columns:1fr; gap:12px; flex:1; min-height:0 }
   @media(min-width:768px) { .log-main { grid-template-columns:1fr 1fr } }
   @media(min-width:1280px){ .log-main { grid-template-columns:1fr 1.4fr 1.8fr } }
   .log-kpi-val { font-size:22px }
@@ -88,10 +92,14 @@ export default function LogisticsDashboard() {
   ];
 
   const SHIPMENT_STATUS = [
-    { label: 'Delivered',  count: 85, pct: 65, color: T.green.solid,  bg: T.green.light  },
-    { label: 'In Transit', count: 15, pct: 11, color: T.blue.solid,   bg: T.blue.light   },
-    { label: 'Pending',    count: 23, pct: 18, color: T.amber.solid,  bg: T.amber.light  },
-    { label: 'Delayed',    count: 8,  pct: 6,  color: T.red.solid,    bg: T.red.light    },
+    { label: 'Delivered',    count: 85, pct: 58, color: T.green.solid,  bg: T.green.light  },
+    { label: 'In Transit',   count: 15, pct: 10, color: T.blue.solid,   bg: T.blue.light   },
+    { label: 'Pending',      count: 23, pct: 16, color: T.amber.solid,  bg: T.amber.light  },
+    { label: 'Delayed',      count: 8,  pct: 6,  color: T.red.solid,    bg: T.red.light    },
+    { label: 'Customs Hold', count: 4,  pct: 3,  color: T.purple.solid, bg: T.purple.light },
+    { label: 'Exception',    count: 3,  pct: 2,  color: T.amber.solid,  bg: T.amber.light  },
+    { label: 'Returned',     count: 2,  pct: 1,  color: 'var(--txt2)',  bg: 'var(--brd2)'  },
+    { label: 'Cancelled',    count: 1,  pct: 1,  color: T.red.solid,    bg: T.red.light    },
   ];
 
   const UPCOMING_DELIVERIES = [
@@ -100,14 +108,19 @@ export default function LogisticsDashboard() {
     { id: 'SHP-003', dest: 'MedPlus Chain, Hyderabad',   items: '800 units Paracetamol',  due: 'Tomorrow 10 AM',status: 'In Transit',       color: T.blue.solid,  bg: T.blue.light   },
     { id: 'SHP-004', dest: 'Wellness Stores, Bangalore', items: '350 units Metformin',    due: 'Tomorrow 3 PM', status: 'Delayed',          color: T.red.solid,   bg: T.red.light    },
     { id: 'SHP-005', dest: 'Care Pharma, Chennai',       items: '1000 units Cetirizine',  due: 'Jun 25',        status: 'Pending',          color: T.amber.solid, bg: T.amber.light  },
+    { id: 'SHP-006', dest: 'National Clinic, Pune',      items: '600 units Omeprazole',   due: 'Jun 25',        status: 'Pending',          color: T.amber.solid, bg: T.amber.light  },
+    { id: 'SHP-007', dest: 'Global Health, Kochi',       items: '450 units Aspirin',      due: 'Jun 26',        status: 'Pending',          color: T.amber.solid, bg: T.amber.light  },
+    { id: 'SHP-008', dest: 'LifeCare Hospital, Surat',   items: '2000 units Vitamin C',   due: 'Jun 27',        status: 'Pending',          color: T.amber.solid, bg: T.amber.light  },
+    { id: 'SHP-009', dest: 'Apex Med, Ahmedabad',        items: '750 units Loratadine',   due: 'Jun 27',        status: 'Pending',          color: T.amber.solid, bg: T.amber.light  },
+    { id: 'SHP-010', dest: 'Prime Pharma, Jaipur',       items: '900 units Diclofenac',   due: 'Jun 28',        status: 'Pending',          color: T.amber.solid, bg: T.amber.light  },
   ];
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--bg)', minHeight: '100%' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{CSS}</style>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 52, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 52, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: T.amber.light, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={T.amber.solid} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -120,7 +133,7 @@ export default function LogisticsDashboard() {
         <div style={{ fontSize: 10.5, color: T.green.text, background: T.green.light, padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>● Live</div>
       </div>
 
-      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0 }}>
 
         {/* KPI row */}
         <div className="log-kpi">
@@ -151,19 +164,19 @@ export default function LogisticsDashboard() {
         <div className="log-main">
 
           {/* Shipment status */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <SectionTitle>Shipment Status</SectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {SHIPMENT_STATUS.map((s) => (
                 <div key={s.label}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <span style={{ fontSize: 12, color: 'var(--txt2)', fontWeight: 500 }}>{s.label}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt)' }}>{s.count}</span>
-                      <span style={{ fontSize: 10, color: s.color, background: s.bg, padding: '1px 6px', borderRadius: 6, fontWeight: 600 }}>{s.pct}%</span>
+                    <span style={{ fontSize: 13, color: 'var(--txt2)', fontWeight: 500 }}>{s.label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>{s.count}</span>
+                      <span style={{ fontSize: 11, color: s.color, background: s.bg, padding: '2px 6px', borderRadius: 6, fontWeight: 600 }}>{s.pct}%</span>
                     </div>
                   </div>
-                  <div style={{ height: 5, borderRadius: 4, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
+                  <div style={{ height: 6, borderRadius: 4, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
                     <div style={{ width: `${s.pct}%`, height: '100%', background: s.color, borderRadius: 4, transition: 'width 0.4s' }} />
                   </div>
                 </div>
@@ -172,22 +185,24 @@ export default function LogisticsDashboard() {
           </Card>
 
           {/* Carrier performance chart */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 240 }}>
             <SectionTitle>Carrier Performance</SectionTitle>
-            <ResponsiveContainer width="100%" height={190}>
-              <BarChart data={CARRIER_PERF} layout="vertical" barCategoryGap="25%" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
-                <XAxis type="number" domain={[75, 100]} tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                <YAxis type="category" dataKey="carrier" tick={{ fontSize: 11, fill: 'var(--txt2)', fontWeight: 500 }} axisLine={false} tickLine={false} width={70} />
-                <Tooltip content={<ChartTip T={T} />} cursor={{ fill: 'rgba(128,128,128,0.06)' }} />
-                <Bar dataKey="efficiency" fill={T.amber.solid} radius={[0,4,4,0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ flex: 1, minHeight: 160 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={CARRIER_PERF} layout="vertical" barCategoryGap="25%" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+                  <XAxis type="number" domain={[75, 100]} tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                  <YAxis type="category" dataKey="carrier" tick={{ fontSize: 11, fill: 'var(--txt2)', fontWeight: 500 }} axisLine={false} tickLine={false} width={70} />
+                  <Tooltip content={<ChartTip T={T} />} cursor={{ fill: 'rgba(128,128,128,0.06)' }} />
+                  <Bar dataKey="efficiency" fill={T.amber.solid} radius={[0,4,4,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
 
           {/* Upcoming deliveries */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 200, overflow: 'hidden' }}>
             <SectionTitle>Upcoming Deliveries</SectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1, overflow: 'auto' }}>
               {UPCOMING_DELIVERIES.map((d, i) => (
                 <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: i < UPCOMING_DELIVERIES.length - 1 ? '1px solid var(--brd)' : 'none' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>

@@ -322,7 +322,7 @@ export default function PharmaAIPage() {
           />
 
           {/* Dashboard — fills the full main area */}
-          <div className="pb-[120px]" style={{ flex: '1 0 auto' }}>
+          <div style={{ flex: '1 1 0%', minHeight: 0, paddingBottom: 120 }}>
             <DomainDashboard />
           </div>
         </main>

@@ -324,14 +324,14 @@ function ChartTip({ active, payload, label }) {
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const CSS = `
-  .ent-content { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
-  @media (min-width: 768px) { .ent-content { padding: 16px 24px; gap: 16px; } }
-  .ent-kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .ent-content { padding: 14px 16px 25px; display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; overflow-y: auto; }
+  @media (min-width: 768px) { .ent-content { padding: 16px 24px 25px; gap: 16px; } }
+  .ent-kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; flex-shrink: 0; }
   @media (min-width: 640px)  { .ent-kpi { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
-  .ent-mid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .ent-mid { display: grid; grid-template-columns: 1fr; gap: 12px; flex-shrink: 0; }
   @media (min-width: 900px)  { .ent-mid { grid-template-columns: 1.2fr 1fr; } }
   @media (min-width: 1280px) { .ent-mid { grid-template-columns: 1.2fr 1fr 1fr; } }
-  .ent-bot { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .ent-bot { display: grid; grid-template-columns: 1fr; gap: 12px; flex-shrink: 0; align-items: stretch; align-content: stretch; }
   @media (min-width: 900px)  { .ent-bot { grid-template-columns: 1fr 1fr; } }
   @media (min-width: 1280px) { .ent-bot { grid-template-columns: 1fr 1fr 1fr; } }
   .ent-kpi-val { font-size: 20px; }
@@ -373,11 +373,11 @@ export default function EnterpriseDashboard() {
     : 78;
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', background: 'var(--bg)', minHeight: '100%' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{CSS}</style>
 
       {/* Sticky Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 20px', height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: T.prod.light, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.prod.solid} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -511,23 +511,25 @@ export default function EnterpriseDashboard() {
         </div>
 
         {/* Row 3: Performance vs Target + Scorecard + Domain Health + Upcoming */}
-        <div className="ent-bot" style={{ alignItems: 'stretch' }}>
+        <div className="ent-bot">
 
-          <Card style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
+          <Card style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 280, overflow: 'hidden' }}>
             <SectionTitle>Performance vs Target (%)</SectionTitle>
-            <ResponsiveContainer width="100%" height={190}>
-              <BarChart data={perfVsTarget} margin={{ top: 4, right: 8, left: -18, bottom: 0 }} barCategoryGap="32%" barGap={3}>
-                <XAxis dataKey="domain" tick={{ fontSize: 11, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
-                <YAxis domain={[perfMin, 100]} ticks={[perfMin, Math.round((perfMin + 100) / 2), 100]} tick={{ fontSize: 11, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(0,0,0,0.04)', radius: [4, 4, 0, 0] }} />
-                <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 11, fontFamily: 'Inter, system-ui' }} />
-                <Bar dataKey="actual" name="Actual" radius={[4, 4, 0, 0]}>
-                  {perfVsTarget.map((_, i) => <Cell key={i} fill={PERF_COLORS[i]} />)}
-                </Bar>
-                <Bar dataKey="target" name="Target" fill="rgba(148,163,184,0.55)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
+            <div style={{ flexShrink: 0 }}>
+              <ResponsiveContainer width="100%" height={190}>
+                <BarChart data={perfVsTarget} margin={{ top: 4, right: 8, left: -18, bottom: 0 }} barCategoryGap="32%" barGap={3}>
+                  <XAxis dataKey="domain" tick={{ fontSize: 11, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[perfMin, 100]} ticks={[perfMin, Math.round((perfMin + 100) / 2), 100]} tick={{ fontSize: 11, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(0,0,0,0.04)', radius: [4, 4, 0, 0] }} />
+                  <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 11, fontFamily: 'Inter, system-ui' }} />
+                  <Bar dataKey="actual" name="Actual" radius={[4, 4, 0, 0]}>
+                    {perfVsTarget.map((_, i) => <Cell key={i} fill={PERF_COLORS[i]} />)}
+                  </Bar>
+                  <Bar dataKey="target" name="Target" fill="rgba(148,163,184,0.55)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10, flex: 1, overflow: 'auto' }}>
               <div style={{ height: 1, background: 'var(--brd)', marginBottom: 2 }} />
               {perfVsTarget.map((d, i) => (
                 <div key={i}>
@@ -552,9 +554,9 @@ export default function EnterpriseDashboard() {
             </div>
           </Card>
 
-          <Card style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
+          <Card style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 280, overflow: 'hidden' }}>
             <SectionTitle>Domain Scorecard</SectionTitle>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 8, flexShrink: 0 }}>
               {DOMAIN_LEGEND.map(d => (
                 <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
@@ -562,6 +564,7 @@ export default function EnterpriseDashboard() {
                 </div>
               ))}
             </div>
+            <div style={{ flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height={210}>
               <RadarChart data={scorecard} cx="50%" cy="50%" outerRadius="68%" margin={{ top: 10, right: 36, left: 36, bottom: 10 }}>
                 <PolarGrid stroke="var(--brd)" />
@@ -574,7 +577,8 @@ export default function EnterpriseDashboard() {
                 <Radar name="Logistics"  dataKey="Logistics"  stroke={T.log.solid}  fill={T.log.solid}  fillOpacity={0.13} strokeWidth={2} />
               </RadarChart>
             </ResponsiveContainer>
-            <div style={{ marginTop: 14, flex: 1 }}>
+            </div>
+            <div style={{ marginTop: 14, flex: 1, overflow: 'auto' }}>
               <div style={{ height: 1, background: 'var(--brd)', marginBottom: 12 }} />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                 {[
@@ -594,7 +598,7 @@ export default function EnterpriseDashboard() {
           </Card>
 
           {/* Domain Health Status + Upcoming Activities */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'hidden' }}>
 
             <Card style={{ padding: '16px 18px', flex: 1 }}>
               <SectionTitle>Domain Health Status</SectionTitle>
@@ -614,9 +618,9 @@ export default function EnterpriseDashboard() {
               </div>
             </Card>
 
-            <Card style={{ padding: '16px 18px' }}>
+            <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <SectionTitle>Upcoming Activities</SectionTitle>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, overflow: 'auto' }}>
                 {upcoming.map((a, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < upcoming.length - 1 ? '1px solid var(--brd)' : 'none' }}>
                     <div style={{ width: 28, height: 28, borderRadius: 7, background: a.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

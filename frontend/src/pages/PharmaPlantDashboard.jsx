@@ -313,8 +313,8 @@ function Donut({ data, total, centerText, centerSub, size = 150, thickness = 18 
 
 // ─── RESPONSIVE CSS ───────────────────────────────────────────────────────────
 const DASHBOARD_CSS = `
-  .pd-content { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
-  @media (min-width: 768px) { .pd-content { padding: 16px 24px; gap: 14px; } }
+  .pd-content { padding: 12px 14px 25px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto; }
+  @media (min-width: 768px) { .pd-content { padding: 16px 24px 25px; gap: 14px; } }
 
   /* KPI row — 2 cols mobile, 3 on sm, 6 on lg */
   .pd-grid-kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -535,7 +535,7 @@ export default function PharmaPlantDashboard() {
   const { kpiCards, productionByArea, batchStatus, criticalParams, activities, inventoryData, shiftChartData, alerts, totalProduced, batchTotal, qualityMetrics, qualityLast9 } = derived;
 
   return (
-    <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: 'var(--bg)', minHeight: "100%" }}>
+    <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{DASHBOARD_CSS}</style>
 
       {/* ── STICKY HEADER ──────────────────────────────────────────────────── */}

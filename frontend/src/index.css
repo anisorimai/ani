@@ -93,7 +93,9 @@
   }
 
   html {
-    font-size: 16px;
+    /* Scale root font with viewport so rem-based sizes adapt to Windows display scale.
+       At 1920px (100% scale) → 16px; at 1280px (150% scale) → ~14px; floor at 13px. */
+    font-size: clamp(13px, 1.1vw, 16px);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     height: 100%;
