@@ -180,13 +180,7 @@ function DocList({ documents, loading, deleting, onDelete, emptyLabel, emptyHint
     );
   }
   if (documents.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', margin: 'auto', color: 'var(--sb-txt3)' }}>
-        <HiOutlineDocument size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
-        <p style={{ fontSize: '0.8rem', margin: 0 }}>{emptyLabel}</p>
-        <p style={{ fontSize: '0.72rem', margin: '4px 0 0', opacity: 0.7 }}>{emptyHint}</p>
-      </div>
-    );
+    return null;
   }
   return documents.map((doc) => {
     const scopeLabel = (doc.dashboard_scope || doc.scope || 'enterprise').toLowerCase();
@@ -376,7 +370,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Upload failed');
       }
-      toast.success(`"${pendingFile.name}" uploaded — indexing in background`);
+      toast.success(`"${pendingFile.name}" uploaded successfully!`);
       resetForm();
       await fetchDocuments();
       startPolling();
@@ -557,7 +551,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
               }}
             >
               <HiOutlineCloudUpload size={16} />
-              {uploading ? 'Uploading…' : 'Upload & Index'}
+              {uploading ? 'Uploading…' : 'Upload Document'}
             </button>
           </div>
         )}
