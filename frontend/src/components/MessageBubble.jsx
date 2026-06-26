@@ -280,7 +280,7 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
         <div
           className={`
             px-3 sm:px-4 py-2 sm:py-3 rounded-xl
-            text-[0.8375rem] sm:text-[0.9375rem] leading-[1.6] sm:leading-[1.65] break-all
+            text-[0.8375rem] sm:text-[0.9375rem] leading-[1.6] sm:leading-[1.65] break-words
             ${isUser
               ? 'ci-user-bubble'
               : `ci-assistant-bubble ${isError ? '!bg-red-500/10 !border-red-500/40' : ''}`}

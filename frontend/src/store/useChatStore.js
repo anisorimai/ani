@@ -99,6 +99,7 @@ const useChatStore = create((set, get) => ({
       isLoading: false,
     }));
     localStorage.setItem('voice-ai-active-id', id);
+    sessionStorage.setItem('voxa-session-active-id', id);
     if (domain) localStorage.setItem('voxa-active-id-' + domain, id);
     return id;
   },
@@ -108,6 +109,8 @@ const useChatStore = create((set, get) => ({
     get().cancelStream();
     set({ activeConversationId: id, streamingText: '', isStreaming: false });
     localStorage.setItem('voice-ai-active-id', id || '');
+    if (id) sessionStorage.setItem('voxa-session-active-id', id);
+    else sessionStorage.removeItem('voxa-session-active-id');
   },
 
   addMessage: (conversationId, { role, content, type, isError, pagination, attachments }) => {
@@ -402,6 +405,9 @@ const useChatStore = create((set, get) => ({
     get().cancelStream();
     set({ activeConversationId: null, streamingText: '', isStreaming: false, isLoading: false });
     localStorage.setItem('voice-ai-active-id', '__new__');
+    sessionStorage.removeItem('voxa-session-active-id');
+    const domain = localStorage.getItem('voxa-selected-domain') || 'Enterprise';
+    localStorage.removeItem('voxa-active-id-' + domain);
   },
 
   getActiveConversation: () => {

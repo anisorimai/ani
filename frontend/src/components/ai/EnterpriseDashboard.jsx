@@ -524,7 +524,7 @@ export default function EnterpriseDashboard() {
                 <Bar dataKey="actual" name="Actual" radius={[4, 4, 0, 0]}>
                   {perfVsTarget.map((_, i) => <Cell key={i} fill={PERF_COLORS[i]} />)}
                 </Bar>
-                <Bar dataKey="target" name="Target" fill="rgba(128,128,128,0.25)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="target" name="Target" fill="rgba(148,163,184,0.55)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
             <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
@@ -554,11 +554,11 @@ export default function EnterpriseDashboard() {
 
           <Card style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column' }}>
             <SectionTitle>Domain Scorecard</SectionTitle>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 20, flexWrap: 'wrap', marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
               {DOMAIN_LEGEND.map(d => (
-                <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>{d.label}</span>
+                  <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500, whiteSpace: 'nowrap' }}>{d.label}</span>
                 </div>
               ))}
             </div>
@@ -572,7 +572,6 @@ export default function EnterpriseDashboard() {
                 <Radar name="Packaging"  dataKey="Packaging"  stroke={T.pkg.solid}  fill={T.pkg.solid}  fillOpacity={0.13} strokeWidth={2} />
                 <Radar name="Quality"    dataKey="Quality"    stroke={T.qlt.solid}  fill={T.qlt.solid}  fillOpacity={0.13} strokeWidth={2} />
                 <Radar name="Logistics"  dataKey="Logistics"  stroke={T.log.solid}  fill={T.log.solid}  fillOpacity={0.13} strokeWidth={2} />
-                <Legend iconType="circle" iconSize={8} verticalAlign="top" align="center" wrapperStyle={{ fontSize: 11, fontFamily: 'Inter, system-ui', paddingBottom: 4 }} />
               </RadarChart>
             </ResponsiveContainer>
             <div style={{ marginTop: 14, flex: 1 }}>

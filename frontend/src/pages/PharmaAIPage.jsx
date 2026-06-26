@@ -76,12 +76,16 @@ export default function PharmaAIPage() {
   useEffect(() => {
     loadTheme();
     loadFromCache().then(() => {
-      // After cache + backend history are loaded, restore the active conversation
-      // for the current domain (overrides the generic voice-ai-active-id).
-      const savedId = localStorage.getItem('voxa-active-id-' + selectedDomain);
+      // Use sessionStorage as the source of truth — it is cleared when the user
+      // explicitly closes a chat or when the tab/browser is closed, so stale
+      // localStorage entries can never resurrect a closed conversation.
+      const sessionId = sessionStorage.getItem('voxa-session-active-id');
       const { conversations } = useChatStore.getState();
-      if (savedId && conversations[savedId]) {
-        useChatStore.getState().setActiveConversation(savedId);
+      if (sessionId && conversations[sessionId]) {
+        useChatStore.getState().setActiveConversation(sessionId);
+      } else {
+        useChatStore.setState({ activeConversationId: null });
+        sessionStorage.removeItem('voxa-session-active-id');
       }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
