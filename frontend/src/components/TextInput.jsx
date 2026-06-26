@@ -176,7 +176,7 @@ export default function TextInput({ onSend, disabled = false }) {
           id="text-send-btn"
           className={`text-send-btn flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full transition-all duration-150 ${
             canSend
-              ? 'bg-gold-gradient text-white shadow-[0_4px_24px_rgba(59,130,246,0.30)] hover:scale-[1.04] active:scale-95'
+              ? 'bg-gold-gradient text-white shadow-[0_4px_24px_rgba(29,108,184,0.40)] hover:scale-[1.04] active:scale-95'
               : 'bg-[var(--surf-hover)] text-[var(--txt3)] opacity-40 cursor-not-allowed'
           }`}
           onClick={handleSend}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { HiOutlineLogout, HiOutlineChevronDown, HiOutlinePencilAlt, HiOutlineX } from 'react-icons/hi';
+import { HiOutlineLogout, HiOutlineChevronDown } from 'react-icons/hi';
 import { toast } from 'react-hot-toast';
 import useAuthStore from '../../store/useAuthStore';
 import useThemeStore from '../../store/useThemeStore';
@@ -13,6 +13,7 @@ export default function AIHeader() {
   const toggleTheme        = useThemeStore((s) => s.toggleTheme);
   const createConversation    = useChatStore((s) => s.createConversation);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const newChat               = useChatStore((s) => s.newChat);
   const hasMessages           = useChatStore((s) => {
     const conv = s.conversations[s.activeConversationId];
     return !!(conv?.messages?.length);
@@ -54,8 +55,13 @@ export default function AIHeader() {
       "
     >
       {/* ── Left: Logo ── */}
-      <div className="flex items-center gap-3 min-w-0">
-        <AppLogo size={100} className="flex-shrink-0" />
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex-shrink-0 sm:hidden logo-badge">
+          <AppLogo size={150} />
+        </div>
+        <div className="flex-shrink-0 hidden sm:block logo-badge">
+          <AppLogo size={210} />
+        </div>
       </div>
 
       {/* ── Center: Application name ── */}
@@ -64,36 +70,71 @@ export default function AIHeader() {
         <span className="text-[10px] text-[var(--txt3)] mt-0.5">Pharma AI Assistant</span>
       </div>
 
-      {/* ── Right: New Chat + Theme toggle + Profile ── */}
+      {/* ── Right: New Chat + Close Chat (when active) + Theme + Profile ── */}
       <div className="flex items-center gap-2">
 
-        {/* New Chat */}
+        {/* New Chat — indigo pill, always visible, creates a fresh conversation */}
         <button
           onClick={createConversation}
           title="New Chat"
           className="
-            w-8 h-8 rounded-lg flex items-center justify-center
-            text-[var(--txt2)] hover:text-[var(--txt)]
-            hover:bg-[var(--brd2)]
-            transition-all duration-200
+            flex items-center gap-1.5
+            px-2.5 sm:px-3 py-1.5 rounded-full
+            text-[11px] font-semibold tracking-wide
+            border transition-all duration-200 active:scale-95
           "
+          style={{
+            color: 'var(--gold-acc)',
+            borderColor: 'rgba(29,108,184,0.35)',
+            background: 'rgba(29,108,184,0.07)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(29,108,184,0.15)';
+            e.currentTarget.style.borderColor = 'rgba(29,108,184,0.6)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(29,108,184,0.07)';
+            e.currentTarget.style.borderColor = 'rgba(29,108,184,0.35)';
+          }}
         >
-          <HiOutlinePencilAlt size={17} />
+          {/* Compose icon */}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-7"/>
+            <path d="M17.5 3.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 7.5-7.5z"/>
+          </svg>
+          <span className="hidden sm:inline">New Chat</span>
         </button>
 
-        {/* Close Chat — only visible when the conversation has messages */}
+        {/* Close Chat — muted pill, only when a conversation is active */}
         {hasMessages && (
           <button
-            onClick={() => setActiveConversation(null)}
+            onClick={newChat}
             title="Close Chat"
             className="
-              w-8 h-8 rounded-lg flex items-center justify-center
-              text-[var(--txt2)] hover:text-red-400
-              hover:bg-red-500/10
-              transition-all duration-200
+              flex items-center gap-1.5
+              px-2.5 sm:px-3 py-1.5 rounded-full
+              text-[11px] font-semibold tracking-wide
+              border transition-all duration-200 active:scale-95
             "
+            style={{
+              color: '#f87171',
+              borderColor: 'rgba(248,113,113,0.35)',
+              background: 'rgba(239,68,68,0.14)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.24)';
+              e.currentTarget.style.borderColor = 'rgba(248,113,113,0.55)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.14)';
+              e.currentTarget.style.borderColor = 'rgba(248,113,113,0.35)';
+            }}
           >
-            <HiOutlineX size={17} />
+            {/* End/close icon */}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+            <span className="hidden sm:inline">Close</span>
           </button>
         )}
 
@@ -106,6 +147,7 @@ export default function AIHeader() {
             hover:bg-[var(--brd2)]
             transition-all duration-200
           "
+          style={{ background: 'var(--surf-hover)' }}
           title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
         >
           {theme === 'dark'
@@ -126,7 +168,7 @@ export default function AIHeader() {
           >
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' }}
+              style={{ background: 'linear-gradient(135deg, #1A3B8A 0%, #1D6CB8 100%)' }}
             >
               {initials}
             </div>

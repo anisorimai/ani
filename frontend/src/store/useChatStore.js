@@ -81,11 +81,12 @@ const useChatStore = create((set, get) => ({
 
   // ---- Conversation Actions ----
 
-  createConversation: () => {
+  createConversation: (domain = '') => {
     const id = generateId();
     const conversation = {
       id,
       title: 'New Chat',
+      domain,
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -97,8 +98,8 @@ const useChatStore = create((set, get) => ({
       isStreaming: false,
       isLoading: false,
     }));
-    // Persist active ID so refresh restores this new chat
     localStorage.setItem('voice-ai-active-id', id);
+    if (domain) localStorage.setItem('voxa-active-id-' + domain, id);
     return id;
   },
 

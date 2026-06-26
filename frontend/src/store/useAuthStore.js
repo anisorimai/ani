@@ -103,7 +103,8 @@ const useAuthStore = create(
       },
 
       // ── Check auth on app load ─────────────────────────────────────────────
-      // Verifies the stored access token. If expired, tries to refresh.
+      // Decodes JWT expiry locally to skip the /me call when already expired,
+      // avoiding guaranteed 401s in the browser console.
       checkAuth: async () => {
         const { token, refresh } = get();
         if (!token) {
@@ -111,22 +112,35 @@ const useAuthStore = create(
           return;
         }
         set({ isCheckingAuth: true });
-        try {
-          const user = await getMe(token);
-          set({ user, isAuthenticated: true, isCheckingAuth: false });
-          warmupWebSocket();
-        } catch {
-          // Access token failed — try refreshing
-          const ok = await refresh();
-          if (ok) {
-            try {
-              const user = await getMe(get().token);
-              set({ user, isAuthenticated: true, isCheckingAuth: false });
-              return;
-            } catch { /* fall through */ }
-          }
-          set({ isAuthenticated: false, user: null, isCheckingAuth: false });
+
+        // Decode expiry without a library — skip getMe if already expired
+        const isExpired = (() => {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.exp * 1000 < Date.now();
+          } catch { return true; }
+        })();
+
+        if (!isExpired) {
+          try {
+            const user = await getMe(token);
+            set({ user, isAuthenticated: true, isCheckingAuth: false });
+            warmupWebSocket();
+            return;
+          } catch { /* token rejected by server — fall through to refresh */ }
         }
+
+        // Token expired or server-rejected — try refreshing silently
+        const ok = await refresh();
+        if (ok) {
+          try {
+            const user = await getMe(get().token);
+            set({ user, isAuthenticated: true, isCheckingAuth: false });
+            warmupWebSocket();
+            return;
+          } catch { /* refresh succeeded but getMe still failed */ }
+        }
+        set({ isAuthenticated: false, user: null, isCheckingAuth: false });
       },
 
       // ── Password reset ─────────────────────────────────────────────────────

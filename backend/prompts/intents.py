@@ -92,13 +92,20 @@ QUALITY_FAST_PATH: dict[str, str] = {
     "workflow_automation": WORKFLOW_AUTOMATION,
 }
 
-# Lookup: dashboard_context value → fast-path prompt dict
+# Lookup: dashboard_context value → fast-path prompt dict.
+# Enterprise is unrestricted and uses the default FAST_PATH (not listed here).
+# Future dashboards (Packaging, Logistics, etc.) should be added here once
+# their scoped prompts are defined above.
 SCOPED_FAST_PATH: dict[str, dict[str, str]] = {
     "production": PRODUCTION_FAST_PATH,
     "quality":    QUALITY_FAST_PATH,
 }
 
-# Lookup: dashboard_context value → locked MongoDB collection name
+# Lookup: dashboard_context value → locked MongoDB collection name.
+# Enterprise sends an empty context and therefore does NOT appear here —
+# omission means unrestricted access to all collections.
+# Future dashboards (Packaging, Logistics, etc.) should be added here once
+# their MongoDB collections and dashboard pages are implemented.
 SCOPED_COLLECTION: dict[str, str] = {
     "production": "production_dashboard",
     "quality":    "quality_dashboard",

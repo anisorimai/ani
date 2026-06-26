@@ -9,13 +9,15 @@ import PackagingDashboard    from '../components/ai/PackagingDashboard';
 import QualityDashboard      from '../components/ai/QualityDashboard';
 import LogisticsDashboard    from '../components/ai/LogisticsDashboard';
 import EnterpriseDashboard   from '../components/ai/EnterpriseDashboard';
+import DocumentUpload        from '../components/DocumentUpload';
+import { LayoutDashboard, Factory, Package, ShieldCheck, Truck } from 'lucide-react';
 
 const SIDEBAR_ITEMS = [
-  { id: 'Enterprise', icon: '📊', label: 'Enterprise Overview', color: '#6366f1' },
-  { id: 'Production', icon: '🏭', label: 'Production Overview',       color: '#6366f1' },
-  { id: 'Packaging',  icon: '📦', label: 'Packaging Overview',        color: '#0ea5e9' },
-  { id: 'Quality',    icon: '📋', label: 'Quality Overview',          color: '#10b981' },
-  { id: 'Logistics',  icon: '🚛', label: 'Logistics Overview',        color: '#f59e0b' },
+  { id: 'Enterprise', Icon: LayoutDashboard, label: 'Enterprise Overview',     color: '#7C3AED' },
+  { id: 'Production', Icon: Factory,         label: 'Production Overview',     color: '#1D6CB8' },
+  { id: 'Quality',    Icon: ShieldCheck,     label: 'Quality Control Overview',color: '#10b981' },
+  { id: 'Packaging',  Icon: Package,         label: 'Packaging Overview',      color: '#0ea5e9' },
+  { id: 'Logistics',  Icon: Truck,           label: 'Logistics Overview',      color: '#f59e0b' },
 ];
 
 const DOMAIN_DASHBOARDS = {
@@ -26,38 +28,63 @@ const DOMAIN_DASHBOARDS = {
   Logistics:  LogisticsDashboard,
 };
 
-// Maps sidebar domain → backend dashboard_context (empty = unrestricted)
+// Maps sidebar domain → backend dashboard_context (empty = unrestricted).
+// Enterprise intentionally omitted — no context means full collection access.
+// Future dashboards (Packaging, Logistics, etc.) should be added here once
+// their MongoDB collections and dashboard pages are implemented.
 const DOMAIN_CONTEXT = {
   Production: 'production',
   Quality:    'quality',
 };
 
 export default function PharmaAIPage() {
-  const [selectedDomain, setSelectedDomain] = useState('Production');
+  const [selectedDomain, setSelectedDomain] = useState(
+    () => localStorage.getItem('voxa-selected-domain') || 'Enterprise'
+  );
+  const [docsOpen, setDocsOpen] = useState(false);
+
+  const loadTheme             = useThemeStore((s) => s.loadTheme);
+  const loadFromCache         = useChatStore((s) => s.loadFromCache);
+  const createConversation    = useChatStore((s) => s.createConversation);
+  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+
+  const handleDomainChange = React.useCallback((newDomain) => {
+    if (newDomain === selectedDomain) return;
+
+    // Persist the current domain's active conversation so we can restore it later
+    const currentActiveId = useChatStore.getState().activeConversationId;
+    if (currentActiveId) {
+      localStorage.setItem('voxa-active-id-' + selectedDomain, currentActiveId);
+    }
+
+    // Restore or create the target domain's conversation
+    const savedId = localStorage.getItem('voxa-active-id-' + newDomain);
+    const { conversations } = useChatStore.getState();
+    if (savedId && conversations[savedId]) {
+      setActiveConversation(savedId);
+    } else {
+      const newId = createConversation(newDomain);
+      localStorage.setItem('voxa-active-id-' + newDomain, newId);
+    }
+
+    localStorage.setItem('voxa-selected-domain', newDomain);
+    setSelectedDomain(newDomain);
+  }, [selectedDomain, setActiveConversation, createConversation]);
 
   const scrollContainerRef = useRef(null);
-  const isMounted          = useRef(false);   // skip domain effect on first render
-
-  const loadTheme          = useThemeStore((s) => s.loadTheme);
-  const loadFromCache      = useChatStore((s) => s.loadFromCache);
-  const createConversation = useChatStore((s) => s.createConversation);
-  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
   useEffect(() => {
     loadTheme();
-    loadFromCache();
-  }, [loadTheme, loadFromCache]);
-
-  // Each time the user switches to a different domain, start a fresh conversation
-  // so the chat context is always scoped to that domain.
-  useEffect(() => {
-    if (!isMounted.current) {
-      isMounted.current = true;
-      return;
-    }
-    setActiveConversation(null);   // cancel any in-flight stream
-    createConversation();          // open a blank conversation for this domain
-  }, [selectedDomain]);            // eslint-disable-line react-hooks/exhaustive-deps
+    loadFromCache().then(() => {
+      // After cache + backend history are loaded, restore the active conversation
+      // for the current domain (overrides the generic voice-ai-active-id).
+      const savedId = localStorage.getItem('voxa-active-id-' + selectedDomain);
+      const { conversations } = useChatStore.getState();
+      if (savedId && conversations[savedId]) {
+        useChatStore.getState().setActiveConversation(savedId);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const DomainDashboard = DOMAIN_DASHBOARDS[selectedDomain] || PharmaPlantDashboard;
 
@@ -67,18 +94,39 @@ export default function PharmaAIPage() {
       style={{ height: '100dvh' }}
       id="ai-root"
     >
+      <style>{`
+        .nav-icon-wrap {
+          width: 28px; height: 28px; border-radius: 8px;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+          transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+        .nav-btn:hover .nav-icon-wrap {
+          transform: scale(1.12);
+        }
+        .nav-btn.active .nav-icon-wrap {
+          animation: icon-pulse 2.4s ease-in-out infinite;
+        }
+        @keyframes icon-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 var(--icon-glow); }
+          50%       { box-shadow: 0 0 8px 3px var(--icon-glow); }
+        }
+      `}</style>
+
       {/* Sticky top header */}
       <AIHeader />
 
       {/* Mobile-only horizontal domain strip */}
       <div className="md:hidden px-4 py-2.5 border-b border-[var(--brd)] flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-shrink-0">
-        {/* New Chat — mobile */}
+        {/* Knowledge Repository — mobile */}
         <button
-          onClick={createConversation}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0 text-xs font-semibold transition-all duration-200 select-none border border-dashed border-[var(--brd2)] text-[var(--txt3)] hover:text-[var(--txt)] hover:border-[var(--txt3)]"
+          onClick={() => setDocsOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0 text-xs font-semibold transition-all duration-200 select-none border border-[var(--brd)] text-[var(--txt2)] hover:text-[var(--txt)] hover:border-[var(--brd2)] bg-[var(--surf)]"
         >
-          <span className="text-sm leading-none">✏️</span>
-          <span>New Chat</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <span>Knowledge Repo</span>
         </button>
 
         {SIDEBAR_ITEMS.map((item) => {
@@ -86,7 +134,7 @@ export default function PharmaAIPage() {
           return (
             <button
               key={item.id}
-              onClick={() => setSelectedDomain(item.id)}
+              onClick={() => handleDomainChange(item.id)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0 text-xs font-semibold transition-all duration-200 select-none"
               style={isActive ? {
                 background: `${item.color}18`,
@@ -97,8 +145,22 @@ export default function PharmaAIPage() {
                 color:      'var(--txt2)',
                 border:     '1px solid var(--brd)',
               }}
+              onMouseEnter={e => {
+                if (isActive) return;
+                e.currentTarget.style.background = `${item.color}15`;
+                e.currentTarget.style.color = item.color;
+                e.currentTarget.style.borderColor = `${item.color}50`;
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={e => {
+                if (isActive) return;
+                e.currentTarget.style.background = 'var(--surf)';
+                e.currentTarget.style.color = 'var(--txt2)';
+                e.currentTarget.style.borderColor = 'var(--brd)';
+                e.currentTarget.style.transform = '';
+              }}
             >
-              <span className="text-sm leading-none">{item.icon}</span>
+              <item.Icon size={14} style={{ flexShrink: 0 }} />
               <span>{item.label}</span>
             </button>
           );
@@ -111,8 +173,8 @@ export default function PharmaAIPage() {
         {/* Desktop left sidebar */}
         <aside className="hidden md:flex flex-col flex-shrink-0 w-56 border-r border-[var(--brd)] bg-[var(--surf)]">
           <div className="px-4 py-3 border-b border-[var(--brd)] flex-shrink-0">
-            <span className="text-[10px] font-bold tracking-widest text-[var(--txt3)] uppercase">
-              Menu
+            <span className="text-[10px] font-bold tracking-widest text-[var(--txt2)] uppercase">
+              Dashboards
             </span>
           </div>
 
@@ -122,30 +184,62 @@ export default function PharmaAIPage() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setSelectedDomain(item.id)}
-                  className="w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-150 hover:bg-[var(--brd2)]"
+                  onClick={() => handleDomainChange(item.id)}
+                  className={`nav-btn${isActive ? ' active' : ''} w-full flex items-center gap-2.5 rounded-lg text-left transition-all duration-200`}
                   style={{
-                    padding:    '8px 12px 8px 9px',
+                    padding:    '7px 10px 7px 8px',
                     borderLeft: `3px solid ${isActive ? item.color : 'transparent'}`,
-                    background: isActive ? `${item.color}18` : undefined,
+                    background: isActive ? `${item.color}15` : 'transparent',
                     color:      isActive ? item.color : 'var(--txt2)',
+                    '--icon-glow': `${item.color}55`,
+                  }}
+                  onMouseEnter={e => {
+                    if (isActive) return;
+                    e.currentTarget.style.background = `${item.color}12`;
+                    e.currentTarget.style.borderLeftColor = `${item.color}60`;
+                    e.currentTarget.style.color = item.color;
+                    e.currentTarget.style.transform = 'translateX(2px)';
+                    e.currentTarget.querySelector('.nav-icon-wrap').style.background = `${item.color}20`;
+                  }}
+                  onMouseLeave={e => {
+                    if (isActive) return;
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderLeftColor = 'transparent';
+                    e.currentTarget.style.color = 'var(--txt2)';
+                    e.currentTarget.style.transform = '';
+                    e.currentTarget.querySelector('.nav-icon-wrap').style.background = 'transparent';
                   }}
                 >
-                  <span className="text-base leading-none flex-shrink-0">{item.icon}</span>
+                  <div
+                    className="nav-icon-wrap"
+                    style={{
+                      background: isActive ? `${item.color}20` : 'transparent',
+                    }}
+                  >
+                    <item.Icon size={14} />
+                  </div>
                   <span className="text-xs font-medium truncate">{item.label}</span>
                 </button>
               );
             })}
           </nav>
 
-          {/* New Chat — desktop */}
+          {/* Knowledge Repository */}
           <div className="flex-shrink-0 p-2 border-t border-[var(--brd)]">
             <button
-              onClick={createConversation}
-              className="w-full flex items-center gap-2.5 rounded-lg text-left px-3 py-2 text-xs font-semibold text-[var(--txt3)] hover:text-[var(--txt)] hover:bg-[var(--brd2)] border border-dashed border-[var(--brd2)] hover:border-[var(--txt3)] transition-all duration-150"
+              onClick={() => setDocsOpen(true)}
+              className="w-full flex items-center gap-2.5 rounded-lg text-left px-3 py-2.5 transition-all duration-150 group"
+              style={{ background: 'var(--bg)', border: '1px solid var(--brd)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--brd2)'; e.currentTarget.style.background = 'var(--brd2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--brd)';  e.currentTarget.style.background = 'var(--bg)'; }}
             >
-              <span className="text-base leading-none">✏️</span>
-              New Chat
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--txt2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-[var(--txt)] truncate">Knowledge Repository</div>
+                <div className="text-[10px] text-[var(--txt2)] truncate">Upload &amp; manage docs</div>
+              </div>
             </button>
           </div>
         </aside>
@@ -171,6 +265,8 @@ export default function PharmaAIPage() {
           </div>
         </main>
       </div>
+
+      <DocumentUpload isOpen={docsOpen} onClose={() => setDocsOpen(false)} />
     </div>
   );
 }

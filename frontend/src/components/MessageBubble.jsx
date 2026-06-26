@@ -68,7 +68,7 @@ function PaginatedMarkdownTable({ node, children, ...rest }) {
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '8px 14px', fontSize: '12px', color: 'var(--txt2)',
-        borderTop: '1px solid var(--brd)',
+        borderTop: '1px solid var(--brd)', flexWrap: 'wrap', gap: 6,
       }}>
         <span style={{ opacity: 0.7 }}>
           Showing {start + 1}–{end} of {totalRows} records
@@ -254,17 +254,17 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
     >
       {/* Avatar — smaller on mobile */}
       {isUser ? (
-        <UserAvatar 
-          className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[0.65rem] sm:text-xs font-bold mt-0.5 overflow-hidden shadow-lg"
-          style={{ background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)', color: '#F8FBFF' }}
+        <UserAvatar
+          className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[0.65rem] sm:text-xs font-bold mt-0.5 overflow-hidden shadow-lg"
+          style={{ background: 'linear-gradient(135deg, #1A3B8A 0%, #1D6CB8 100%)', color: '#fff' }}
         />
       ) : (
-        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-[var(--surf)] border border-blue-400/20 mt-0.5">
+        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-[var(--surf)] border mt-0.5" style={{ borderColor: 'rgba(29,108,184,0.30)' }}>
           <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
             <defs>
               <linearGradient id={`ai-grad-${message.id}`} x1="0" y1="0" x2="28" y2="28">
-                <stop offset="0%" stopColor="#3B82F6" />
-                <stop offset="100%" stopColor="#BFDBFE" />
+                <stop offset="0%" stopColor="#1D6CB8" />
+                <stop offset="100%" stopColor="#4DBADF" />
               </linearGradient>
             </defs>
             <circle cx="14" cy="14" r="13" stroke={`url(#ai-grad-${message.id})`} strokeWidth="2" fill="none" />
@@ -319,7 +319,7 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
                 </button>
                 <button 
                   onClick={handleEditSubmit}
-                  className="px-4 py-1.5 text-[11px] font-black uppercase tracking-widest bg-[#0B0B0F] text-[#3B82F6] rounded-lg hover:bg-black transition-all shadow-md active:scale-95"
+                  className="px-4 py-1.5 text-[11px] font-black uppercase tracking-widest rounded-lg transition-all shadow-md active:scale-95" style={{ background: 'linear-gradient(135deg, #1A3B8A, #1D6CB8)', color: '#fff' }}
                 >
                   Send
                 </button>
@@ -364,6 +364,15 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
           ) : hasChartIntent ? (
             <div className="w-full flex flex-col gap-3">
               <DynamicResponseTemplate content={content} query={triggerQuery} />
+            </div>
+          ) : isStreaming ? (
+            // Plain-text render during streaming — avoids running ReactMarkdown
+            // on every token flush (eliminates the RAF >100ms violations).
+            <div className="prose-gold chatbot-reference-markdown overflow-x-auto whitespace-pre-wrap break-words">
+              {(content || '')
+                .replace(/```json\s*KPI_METRICS_JSON[\s\S]*?```/gi, '')
+                .replace(/KPI_METRICS_JSON[^\n]*/gi, '')
+                .trim()}
             </div>
           ) : (
             <div className={`prose-gold chatbot-reference-markdown overflow-x-auto ${isError ? 'text-red-400' : ''}`}>
@@ -536,12 +545,12 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
 export function TypingIndicator() {
   return (
     <div className="flex gap-3 py-2 max-w-[1000px] w-full mx-auto animate-fade-in-up" id="typing-indicator">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-[var(--surf)] border border-blue-400/20 mt-0.5">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-[var(--surf)] border mt-0.5" style={{ borderColor: 'rgba(29,108,184,0.30)' }}>
         <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
           <defs>
             <linearGradient id="ai-grad-typing" x1="0" y1="0" x2="28" y2="28">
-              <stop offset="0%" stopColor="#3B82F6" />
-              <stop offset="100%" stopColor="#BFDBFE" />
+              <stop offset="0%" stopColor="#1D6CB8" />
+              <stop offset="100%" stopColor="#4DBADF" />
             </linearGradient>
           </defs>
           <circle cx="14" cy="14" r="13" stroke="url(#ai-grad-typing)" strokeWidth="2" fill="none" />

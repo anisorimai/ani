@@ -2,7 +2,11 @@ import { useCallback, useRef, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import useVoiceStore from '../store/useVoiceStore';
 
-const MAX_RECORDING_SECONDS = 60;
+const MAX_RECORDING_SECONDS  = 60;
+const NO_SPEECH_TIMEOUT_MS   = 3000;  // stop if user never speaks within 3 s
+const TRAILING_SILENCE_MS    = 5000;  // stop 5 s after user goes quiet
+const SPEECH_THRESHOLD       = 0.04;  // RMS threshold — high enough to reject ambient mic noise
+const SPEECH_CONFIRM_FRAMES  = 4;     // consecutive frames above threshold required to confirm speech
 
 /**
  * Custom hook for voice recording using MediaRecorder + Web Audio API.
@@ -11,22 +15,26 @@ const MAX_RECORDING_SECONDS = 60;
  * - Real-time volume levels for visualizer
  * - Auto-stop after 60 seconds
  * - Minimum volume threshold (rejects silent recordings)
+ * - Trailing-silence auto-stop: stops 5 s after user goes quiet, then sends as query
  * - Permission error handling with user-facing toasts
  * - Proper cleanup on unmount
  */
 export default function useVoiceRecorder() {
-  const mediaRecorderRef  = useRef(null);
-  const audioContextRef   = useRef(null);
-  const analyserRef       = useRef(null);
-  const animFrameRef      = useRef(null);
-  const chunksRef         = useRef([]);
-  const streamRef         = useRef(null);
-  const timerRef          = useRef(null);
-  const autoStopRef       = useRef(null);
-  const volumeSamplesRef  = useRef([]);
+  const mediaRecorderRef       = useRef(null);
+  const audioContextRef        = useRef(null);
+  const analyserRef            = useRef(null);
+  const animFrameRef           = useRef(null);
+  const chunksRef              = useRef([]);
+  const streamRef              = useRef(null);
+  const timerRef               = useRef(null);
+  const autoStopRef            = useRef(null);
+  const volumeSamplesRef       = useRef([]);
+  const hasSpeechRef           = useRef(false);
+  const noSpeechToastShownRef  = useRef(false); // true when silence timer already toasted
+  const silenceTimerRef        = useRef(null);  // fires if no speech in 3 s
+  const trailingSilenceRef     = useRef(null);  // restarted on every speech frame; fires 1.5 s after user goes quiet
 
   const {
-    isRecording,
     setRecording,
     setRecordingDuration,
     setAudioBlob,
@@ -58,6 +66,14 @@ export default function useVoiceRecorder() {
       clearTimeout(autoStopRef.current);
       autoStopRef.current = null;
     }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (trailingSilenceRef.current) {
+      clearTimeout(trailingSilenceRef.current);
+      trailingSilenceRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -80,6 +96,7 @@ export default function useVoiceRecorder() {
       analyserRef.current     = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let consecutiveSpeechFrames = 0;
 
       const tick = () => {
         if (!analyserRef.current) return;
@@ -94,6 +111,31 @@ export default function useVoiceRecorder() {
         const rms = Math.sqrt(sum / dataArray.length);
         setVolume(rms);
         volumeSamplesRef.current.push(rms);
+
+        if (rms > SPEECH_THRESHOLD) {
+          consecutiveSpeechFrames++;
+
+          // Require SPEECH_CONFIRM_FRAMES consecutive frames to rule out noise spikes.
+          if (consecutiveSpeechFrames >= SPEECH_CONFIRM_FRAMES && !hasSpeechRef.current) {
+            hasSpeechRef.current = true;
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+          }
+
+          // Only arm the trailing-silence timer once real speech is confirmed.
+          if (hasSpeechRef.current) {
+            clearTimeout(trailingSilenceRef.current);
+            trailingSilenceRef.current = setTimeout(() => {
+              if (mediaRecorderRef.current?.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+              }
+            }, TRAILING_SILENCE_MS);
+          }
+        } else {
+          consecutiveSpeechFrames = 0;
+        }
 
         animFrameRef.current = requestAnimationFrame(tick);
       };
@@ -161,7 +203,18 @@ export default function useVoiceRecorder() {
           return;
         }
 
-        // Backend VAD now performs final speech detection.
+        // Discard recordings where no speech was ever detected (prevents
+        // Whisper hallucinations on silent audio reaching the AI agent).
+        if (!hasSpeechRef.current) {
+          if (!noSpeechToastShownRef.current) {
+            toast('No speech detected', { icon: '🎤', duration: 2000 });
+          }
+          noSpeechToastShownRef.current = false;
+          setRecording(false);
+          setVolume(0);
+          doCleanup();
+          return;
+        }
 
         setAudioBlob(blob);
         setRecording(false);
@@ -181,6 +234,8 @@ export default function useVoiceRecorder() {
       setRecording(true);
 
       // Start volume analyser
+      hasSpeechRef.current          = false;
+      noSpeechToastShownRef.current = false;
       startAnalyser(stream);
 
       // Duration timer
@@ -190,7 +245,16 @@ export default function useVoiceRecorder() {
         setRecordingDuration(seconds);
       }, 1000);
 
-      // Auto-stop after MAX_RECORDING_SECONDS
+      // Auto-stop if no speech detected within 3 s
+      silenceTimerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current?.state !== 'inactive') {
+          noSpeechToastShownRef.current = true;
+          toast('No speech detected', { icon: '🎤', duration: 2000 });
+          mediaRecorderRef.current.stop();
+        }
+      }, NO_SPEECH_TIMEOUT_MS);
+
+      // Hard cap at MAX_RECORDING_SECONDS
       autoStopRef.current = setTimeout(() => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
@@ -233,6 +297,14 @@ export default function useVoiceRecorder() {
     if (autoStopRef.current) {
       clearTimeout(autoStopRef.current);
       autoStopRef.current = null;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (trailingSilenceRef.current) {
+      clearTimeout(trailingSilenceRef.current);
+      trailingSilenceRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());

@@ -1,16 +1,31 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { HiMicrophone, HiStop } from 'react-icons/hi';
 import AudioWaveform, { AudioGlow } from './AudioVisualizer';
 import useVoiceStore from '../store/useVoiceStore';
 
 /**
  * Compact voice button for the chat input bar.
- * Shows a small waveform + duration counter when recording.
+ * When recording, expands to fill the full pill width with a responsive waveform.
  */
 export default function VoiceButton({ onRecordComplete, disabled = false }) {
-  const isRecording = useVoiceStore((s) => s.isRecording);
+  const isRecording    = useVoiceStore((s) => s.isRecording);
   const isTranscribing = useVoiceStore((s) => s.isTranscribing);
   const recordingDuration = useVoiceStore((s) => s.recordingDuration);
+
+  const waveContainerRef = useRef(null);
+  const [waveWidth, setWaveWidth] = useState(100);
+
+  // Track the waveform container's width so the canvas fills it exactly
+  useEffect(() => {
+    if (!isRecording) return;
+    const el = waveContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setWaveWidth(Math.floor(entry.contentRect.width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isRecording]);
 
   const formatDuration = (sec) => {
     const m = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -21,9 +36,11 @@ export default function VoiceButton({ onRecordComplete, disabled = false }) {
   const state = isTranscribing ? 'transcribing' : isRecording ? 'recording' : 'idle';
 
   return (
-    <div className="flex items-center gap-2 flex-shrink-0 transition-all duration-250" id="voice-button-container">
+    <div
+      id="voice-button-container"
+      className={`flex items-center gap-2 transition-all duration-250 ${isRecording ? 'flex-1 min-w-0 w-full' : 'flex-shrink-0'}`}
+    >
       {state === 'transcribing' ? (
-        /* Compact orbital loader for chat input bar */
         <div
           className="transcribing-loader w-10 h-10 min-w-[40px] min-h-[40px] flex-shrink-0"
           aria-label="Transcribing audio"
@@ -45,10 +62,15 @@ export default function VoiceButton({ onRecordComplete, disabled = false }) {
               transition-all duration-200 border-none outline-none
               disabled:opacity-40 disabled:cursor-not-allowed disabled:!transform-none disabled:!animate-none
               ${state === 'idle'
-                ? 'bg-[#3B82F6] shadow-[0_2px_12px_rgba(59,130,246,0.4)] hover:bg-[#2563EB] hover:scale-[1.06] active:scale-95'
-                : 'bg-red-500 shadow-[0_4px_28px_rgba(239,68,68,0.4)] animate-pulse-beat'}
+                ? 'shadow-[0_2px_12px_rgba(29,108,184,0.45)] hover:scale-[1.06] active:scale-95'
+                : 'shadow-[0_4px_28px_rgba(29,108,184,0.55)] animate-pulse-beat'}
             `}
-            style={{ borderRadius: '9999px' }}
+            style={{
+              borderRadius: '9999px',
+              background: state === 'recording'
+                ? 'linear-gradient(135deg, #1A3B8A, #1D6CB8)'
+                : 'linear-gradient(135deg, #1D6CB8, #2A8FD4)',
+            }}
             onClick={onRecordComplete}
             disabled={disabled}
             aria-label={isRecording ? 'Stop voice command' : 'Start voice command'}
@@ -59,11 +81,16 @@ export default function VoiceButton({ onRecordComplete, disabled = false }) {
         </div>
       )}
 
-      {/* Inline waveform + duration when recording */}
+      {/* Waveform + duration — stretches to fill remaining pill width */}
       {isRecording && (
-        <div className="flex items-center gap-3 animate-fade-in">
-          <AudioWaveform width={100} height={24} />
-          <span className="text-[0.8125rem] font-bold text-red-400 tabular-nums whitespace-nowrap tracking-wide">
+        <div className="flex items-center gap-3 animate-fade-in flex-1 min-w-0">
+          <div ref={waveContainerRef} className="flex-1 min-w-0">
+            <AudioWaveform width={waveWidth} height={24} />
+          </div>
+          <span
+            className="text-[0.8125rem] font-bold tabular-nums whitespace-nowrap tracking-wide flex-shrink-0"
+            style={{ color: '#4DBADF' }}
+          >
             {formatDuration(recordingDuration)}
           </span>
         </div>

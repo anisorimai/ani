@@ -726,7 +726,6 @@ class QueryOrchestrator:
                 _fp = _intents.SCOPED_FAST_PATH[dashboard_context]
                 system = _fp.get(intent, _fp.get("conversational", _intents.FAST_PATH[intent]))
             else:
-                import prompts.intents as _intents
                 system = _intents.FAST_PATH[intent]
             msgs = [{"role": "system", "content": system}]
             if effective_history:
@@ -908,7 +907,6 @@ class QueryOrchestrator:
             )
 
             if not fetched and not rag_chunks:
-                import prompts.intents as _intents
                 _fb_full: list[str] = []
                 try:
                     async for _tok in self._llm.stream([
@@ -1011,7 +1009,6 @@ class QueryOrchestrator:
 
         validation = validate_retrieval(resolved_query, fetched, bool(query_vector), query_meta)
         if validation.recommendation == "no_data" and not rag_chunks:
-            import prompts.intents as _intents
             _fb_full: list[str] = []
             try:
                 async for _tok in self._llm.stream([
@@ -1226,7 +1223,6 @@ class QueryOrchestrator:
             timings["data_fetch_ms"] = _ms(t5)
 
             if not fetched and not rag_chunks:
-                import prompts.intents as _intents
                 try:
                     _fb_response = self._llm.complete([
                         {"role": "system", "content": _intents.NO_DATA},
@@ -1321,7 +1317,6 @@ class QueryOrchestrator:
 
         validation = validate_retrieval(query, fetched, bool(query_vector), query_meta)
         if validation.recommendation == "no_data" and not rag_chunks:
-            import prompts.intents as _intents
             try:
                 _fb_response = self._llm.complete([
                     {"role": "system", "content": _intents.NO_DATA},

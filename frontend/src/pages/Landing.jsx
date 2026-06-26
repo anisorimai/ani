@@ -8,15 +8,10 @@ import AppLogo from '../components/AppLogo';
 
 // ── Logo ──────────────────────────────────────────────────────────────────────
 function Logo({ size = 'md' }) {
-  const logoSize = size === 'sm' ? 80 : 110;
-  const title = size === 'sm' ? 'text-lg' : 'text-xl';
+  const logoSize = size === 'sm' ? 220 : 320;
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex-shrink-0 logo-badge">
       <AppLogo size={logoSize} />
-      <div>
-        <p className={`${title} font-black tracking-tight text-gray-900 leading-none`}>ANI Health Care</p>
-        <p className="text-xs text-gray-400 font-medium mt-0.5">AI Voice Agent</p>
-      </div>
     </div>
   );
 }
@@ -142,7 +137,7 @@ function SignUpForm({ setView }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Full Name</label>
             <input name="name" type="text" value={form.name} onChange={handle}

@@ -91,7 +91,9 @@ export default function Header({ onToggleSidebar, onCloseSidebar, view, onViewCh
         {/* Logo + app name — only shown when inside an active chat */}
         {view === 'chat' && !isWelcomeScreen && (
           <div className="flex items-center gap-2 animate-fade-in">
-            <AppLogo className="rounded-md" style={{ width:'130px' }} />
+            <div className="logo-badge">
+              <AppLogo style={{ width: '180px' }} />
+            </div>
             <span className="font-semibold text-sm text-[var(--txt)]">
               Voxa
               <span className="hidden sm:inline text-xs font-normal">

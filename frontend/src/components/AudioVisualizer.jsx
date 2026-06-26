@@ -57,18 +57,18 @@ export default function AudioWaveform({ width = 200, height = 40 }) {
           bars[i] += (target - bars[i]) * 0.25;
         }
 
-        /* Draw bars: gold → light-gold gradient */
+        /* Draw bars: royal blue → sky blue gradient (matches logo) */
         for (let i = 0; i < BAR_COUNT; i++) {
           const x    = i * (barWidth + GAP);
           const barH = bars[i];
           const frac = i / BAR_COUNT;
 
-          /* Interpolate: gold(212,175,55) → light gold(245,230,179) */
-          const r = Math.round(212 + (245 - 212) * frac);
-          const g = Math.round(175 + (230 - 175) * frac);
-          const b = Math.round(55  + (179 - 55)  * frac);
-          /* Alpha: minimum 0.75 so bars are always clearly visible */
-          const alpha = Math.min(1, 0.75 + vol * 0.25);
+          /* Interpolate: #1D6CB8 (29,108,184) → #4DBADF (77,186,223) */
+          const r = Math.round(29  + (77  - 29)  * frac);
+          const g = Math.round(108 + (186 - 108) * frac);
+          const b = Math.round(184 + (223 - 184) * frac);
+          /* Alpha: minimum 0.80 so bars are always clearly visible */
+          const alpha = Math.min(1, 0.80 + vol * 0.20);
 
           ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
           ctx.beginPath();
@@ -155,9 +155,9 @@ export function AudioGlow({ size = 100 }) {
           const alpha  = (0.12 + effectiveVol * 0.18) / r;
 
           const grad = ctx.createRadialGradient(center, center, radius * 0.4, center, center, radius);
-          grad.addColorStop(0,   `rgba(212, 175, 55, ${alpha})`);
-          grad.addColorStop(0.5, `rgba(245, 200, 80, ${alpha * 0.55})`);
-          grad.addColorStop(1,   'rgba(184, 150, 46, 0)');
+          grad.addColorStop(0,   `rgba(29, 108, 184, ${alpha})`);
+          grad.addColorStop(0.5, `rgba(77, 186, 223, ${alpha * 0.55})`);
+          grad.addColorStop(1,   'rgba(26, 59, 138, 0)');
 
           ctx.beginPath();
           ctx.arc(center, center, radius, 0, Math.PI * 2);
@@ -169,7 +169,7 @@ export function AudioGlow({ size = 100 }) {
         const innerRadius = 26 + effectiveVol * 8;
         ctx.beginPath();
         ctx.arc(center, center, innerRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(212, 175, 55, ${0.3 + effectiveVol * 0.4})`;
+        ctx.strokeStyle = `rgba(77, 186, 223, ${0.45 + effectiveVol * 0.45})`;
         ctx.lineWidth = 2;
         ctx.stroke();
 

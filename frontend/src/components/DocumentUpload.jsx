@@ -33,7 +33,7 @@ const STATUS_CONFIG = {
   indexed:  { label: 'Indexed',    color: '#22c55e', bg: 'rgba(34,197,94,0.12)'  },
   pending:  { label: 'Indexing…',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
   failed:   { label: 'Failed',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)'  },
-  missing:  { label: 'Missing',    color: '#6b7280', bg: 'rgba(107,114,128,0.12)'},
+  missing:  { label: 'Missing',    color: 'var(--txt2)', bg: 'var(--brd2)' },
   unknown:  { label: 'Pending',    color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
 };
 
@@ -152,6 +152,100 @@ function DocList({ documents, loading, deleting, onDelete, emptyLabel, emptyHint
   ));
 }
 
+const SCOPE_OPTIONS = [
+  { value: '',           label: 'General' },
+  { value: 'quality',    label: 'Quality' },
+  { value: 'production', label: 'Production' },
+  { value: 'packaging',  label: 'Packaging' },
+  { value: 'logistics',  label: 'Logistics' },
+];
+
+const DOC_TYPE_OPTIONS = [
+  '', 'Brochure', 'Catalog', 'Certificate', 'Datasheet', 'Drawing',
+  'Form', 'Manual', 'Policy', 'Protocol', 'Report', 'SOP', 'Specification', 'Other',
+];
+
+const fieldStyle = {
+  width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: '0.8125rem',
+  color: 'var(--sb-txt)', background: 'var(--sb-hover)',
+  border: '1px solid var(--sb-brd)', outline: 'none', boxSizing: 'border-box',
+};
+
+function MetaFields({ scope, equipment, docType, docTypeOther, onScope, onEquipment, onDocType, onDocTypeOther }) {
+  return (
+    <div
+      style={{
+        margin: '12px 20px 0', padding: '14px 16px',
+        borderRadius: 12, border: '1px solid var(--sb-brd)',
+        background: 'var(--sb-hover)', display: 'flex', flexDirection: 'column', gap: 10,
+        flexShrink: 0,
+      }}
+    >
+      <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--sb-txt2)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+        Document metadata
+      </p>
+
+      {/* Scope */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sb-txt)' }}>
+          Scope <span style={{ color: '#ef4444' }}>*</span>
+        </label>
+        <select
+          value={scope}
+          onChange={(e) => onScope(e.target.value)}
+          style={{ ...fieldStyle, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}
+        >
+          {SCOPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* Equipment */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sb-txt)' }}>
+            Equipment <span style={{ color: '#ef4444' }}>*</span>
+          </label>
+          <input
+            type="text"
+            value={equipment}
+            onChange={(e) => onEquipment(e.target.value)}
+            placeholder="e.g. Flame Photometer"
+            style={fieldStyle}
+          />
+        </div>
+
+        {/* Document type */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--sb-txt)' }}>
+            Document Type <span style={{ color: '#ef4444' }}>*</span>
+          </label>
+          <select
+            value={docType}
+            onChange={(e) => onDocType(e.target.value)}
+            style={{ ...fieldStyle, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}
+          >
+            {DOC_TYPE_OPTIONS.map((o) => (
+              <option key={o} value={o}>{o || '— Select type —'}</option>
+            ))}
+          </select>
+          {docType === 'Other' && (
+            <input
+              type="text"
+              value={docTypeOther}
+              onChange={(e) => onDocTypeOther(e.target.value)}
+              placeholder="Specify document type"
+              style={fieldStyle}
+              autoFocus
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DocumentUpload({ isOpen, onClose }) {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.is_admin === true;
@@ -164,6 +258,13 @@ export default function DocumentUpload({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [pendingFile, setPendingFile] = useState(null);
+
+  // Metadata fields — personal
+  const [scope,     setScope]     = useState('');
+  const [equipment, setEquipment] = useState('');
+  const [docType,      setDocType]      = useState('');
+  const [docTypeOther, setDocTypeOther] = useState('');
 
   // Org docs state (admin only)
   const [orgDocs, setOrgDocs] = useState([]);
@@ -171,6 +272,13 @@ export default function DocumentUpload({ isOpen, onClose }) {
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgDeleting, setOrgDeleting] = useState(null);
   const [orgDragOver, setOrgDragOver] = useState(false);
+  const [orgPendingFile, setOrgPendingFile] = useState(null);
+
+  // Metadata fields — org
+  const [orgScope,        setOrgScope]        = useState('');
+  const [orgEquipment,    setOrgEquipment]    = useState('');
+  const [orgDocType,      setOrgDocType]      = useState('');
+  const [orgDocTypeOther, setOrgDocTypeOther] = useState('');
 
   const fileInputRef = useRef(null);
   const orgFileInputRef = useRef(null);
@@ -208,17 +316,29 @@ export default function DocumentUpload({ isOpen, onClose }) {
     }, 3000);
   }, [fetchDocuments]);
 
-  const handleUpload = async (file) => {
+  const stageFile = (file) => {
     if (!file) return;
     const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       toast.error(`Unsupported file format "${ext}". Supported: PDF, Word, images (PNG/JPG/WebP…), CSV, JSON, text.`);
       return;
     }
+    setPendingFile(file);
+  };
+
+  const handleUpload = async () => {
+    const file = pendingFile;
+    if (!file) return;
+    const effectiveDocType = docType === 'Other' ? docTypeOther.trim() : docType;
+    if (!equipment.trim())  { toast.error('Equipment is required'); return; }
+    if (!effectiveDocType)  { toast.error(docType === 'Other' ? 'Please specify the document type' : 'Document Type is required'); return; }
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (scope)             formData.append('scope',         scope);
+      if (equipment)         formData.append('equipment',     equipment);
+      if (effectiveDocType)  formData.append('document_type', effectiveDocType);
       const res = await fetch(`${API_BASE}/documents/upload`, {
         method: 'POST',
         headers: authHeaders(),
@@ -229,6 +349,8 @@ export default function DocumentUpload({ isOpen, onClose }) {
         throw new Error(err.detail || 'Upload failed');
       }
       toast.success(`"${file.name}" uploaded — indexing in background`);
+      setPendingFile(null);
+      setScope(''); setEquipment(''); setDocType(''); setDocTypeOther('');
       await fetchDocuments();
       startPolling();
     } catch (err) {
@@ -286,17 +408,29 @@ export default function DocumentUpload({ isOpen, onClose }) {
     }, 3000);
   }, [fetchOrgDocuments]);
 
-  const handleOrgUpload = async (file) => {
+  const stageOrgFile = (file) => {
     if (!file) return;
     const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       toast.error(`Unsupported file format "${ext}".`);
       return;
     }
+    setOrgPendingFile(file);
+  };
+
+  const handleOrgUpload = async () => {
+    const file = orgPendingFile;
+    if (!file) return;
+    const effectiveOrgDocType = orgDocType === 'Other' ? orgDocTypeOther.trim() : orgDocType;
+    if (!orgEquipment.trim())   { toast.error('Equipment is required'); return; }
+    if (!effectiveOrgDocType)   { toast.error(orgDocType === 'Other' ? 'Please specify the document type' : 'Document Type is required'); return; }
     setOrgUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (orgScope)            formData.append('scope',         orgScope);
+      if (orgEquipment)        formData.append('equipment',     orgEquipment);
+      if (effectiveOrgDocType) formData.append('document_type', effectiveOrgDocType);
       const res = await fetch(`${API_BASE}/documents/org/upload`, {
         method: 'POST',
         headers: authHeaders(),
@@ -307,6 +441,8 @@ export default function DocumentUpload({ isOpen, onClose }) {
         throw new Error(err.detail || 'Upload failed');
       }
       toast.success(`"${file.name}" shared with your organisation — indexing in background`);
+      setOrgPendingFile(null);
+      setOrgScope(''); setOrgEquipment(''); setOrgDocType(''); setOrgDocTypeOther('');
       await fetchOrgDocuments();
       startOrgPolling();
     } catch (err) {
@@ -339,6 +475,8 @@ export default function DocumentUpload({ isOpen, onClose }) {
     if (!isOpen) {
       clearInterval(pollRef.current);    pollRef.current = null;
       clearInterval(orgPollRef.current); orgPollRef.current = null;
+      setPendingFile(null);
+      setOrgPendingFile(null);
       return;
     }
 
@@ -388,7 +526,7 @@ export default function DocumentUpload({ isOpen, onClose }) {
     >
       <div
         style={{
-          width: '100%', maxWidth: 480, maxHeight: '85vh',
+          width: '100%', maxWidth: 480, maxHeight: '92dvh',
           display: 'flex', flexDirection: 'column',
           background: 'var(--sb-bg)', border: '1px solid var(--sb-brd)',
           borderRadius: 16, overflow: 'hidden',
@@ -503,15 +641,15 @@ export default function DocumentUpload({ isOpen, onClose }) {
             e.preventDefault();
             isOrgTab ? setOrgDragOver(false) : setDragOver(false);
             const file = e.dataTransfer.files?.[0];
-            if (file) isOrgTab ? handleOrgUpload(file) : handleUpload(file);
+            if (file) isOrgTab ? stageOrgFile(file) : stageFile(file);
           }}
           onClick={() => {
             if (isOrgTab ? orgUploading : uploading) return;
             isOrgTab ? orgFileInputRef.current?.click() : fileInputRef.current?.click();
           }}
         >
-          <input ref={fileInputRef} type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} style={{ display: 'none' }} />
-          <input ref={orgFileInputRef} type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleOrgUpload(f); e.target.value = ''; }} style={{ display: 'none' }} />
+          <input ref={fileInputRef} type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) stageFile(f); e.target.value = ''; }} style={{ display: 'none' }} />
+          <input ref={orgFileInputRef} type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) stageOrgFile(f); e.target.value = ''; }} style={{ display: 'none' }} />
 
           <HiOutlineCloudUpload
             size={28}
@@ -521,6 +659,15 @@ export default function DocumentUpload({ isOpen, onClose }) {
             <p style={{ fontSize: '0.8125rem', color: 'var(--sb-txt2)', margin: 0 }}>
               Uploading and queuing for indexing…
             </p>
+          ) : (isOrgTab ? orgPendingFile : pendingFile) ? (
+            <>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--ci-primary-solid)', margin: 0, fontWeight: 600 }}>
+                {(isOrgTab ? orgPendingFile : pendingFile).name}
+              </p>
+              <span style={{ fontSize: '0.7rem', color: 'var(--sb-txt3)' }}>
+                {formatSize((isOrgTab ? orgPendingFile : pendingFile).size)} · Click to change file
+              </span>
+            </>
           ) : (
             <>
               <p style={{ fontSize: '0.8125rem', color: 'var(--sb-txt)', margin: 0, fontWeight: 500 }}>
@@ -532,6 +679,48 @@ export default function DocumentUpload({ isOpen, onClose }) {
             </>
           )}
         </div>
+
+        {/* ── Metadata fields ── */}
+        <MetaFields
+          scope={isOrgTab ? orgScope : scope}
+          equipment={isOrgTab ? orgEquipment : equipment}
+          docType={isOrgTab ? orgDocType : docType}
+          docTypeOther={isOrgTab ? orgDocTypeOther : docTypeOther}
+          onScope={isOrgTab ? setOrgScope : setScope}
+          onEquipment={isOrgTab ? setOrgEquipment : setEquipment}
+          onDocType={isOrgTab ? setOrgDocType : setDocType}
+          onDocTypeOther={isOrgTab ? setOrgDocTypeOther : setDocTypeOther}
+        />
+
+        {/* ── Upload button ── */}
+        {(isOrgTab ? orgPendingFile : pendingFile) && (() => {
+          const busy = isOrgTab ? orgUploading : uploading;
+          const effectiveDT = isOrgTab
+            ? (orgDocType === 'Other' ? orgDocTypeOther.trim() : orgDocType)
+            : (docType === 'Other' ? docTypeOther.trim() : docType);
+          const ready = isOrgTab
+            ? (orgEquipment.trim() && effectiveDT)
+            : (equipment.trim() && effectiveDT);
+          return (
+            <div style={{ margin: '10px 20px 0', flexShrink: 0 }}>
+              <button
+                disabled={busy || !ready}
+                onClick={isOrgTab ? handleOrgUpload : handleUpload}
+                style={{
+                  width: '100%', padding: '9px 0', borderRadius: 10, border: 'none',
+                  background: 'var(--ci-primary-solid)', color: '#fff',
+                  fontSize: '0.875rem', fontWeight: 600,
+                  cursor: (busy || !ready) ? 'not-allowed' : 'pointer',
+                  opacity: (busy || !ready) ? 0.45 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                <HiOutlineCloudUpload size={16} />
+                {busy ? 'Uploading…' : 'Upload & Index'}
+              </button>
+            </div>
+          );
+        })()}
 
         {/* ── Document list ── */}
         <div

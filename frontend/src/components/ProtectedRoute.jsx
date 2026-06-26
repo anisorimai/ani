@@ -3,9 +3,13 @@ import { Navigate } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, isCheckingAuth } = useAuthStore();
+  const { isAuthenticated, isCheckingAuth, token } = useAuthStore();
 
-  if (isCheckingAuth) {
+  // Block on spinner when:
+  // - actively checking auth (async validation in flight), OR
+  // - we have a stored token but isAuthenticated hasn't been confirmed yet
+  //   (handles the brief hydration window on page refresh)
+  if (!isAuthenticated && (isCheckingAuth || token)) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-[var(--bg)]">
         <div className="flex flex-col items-center gap-4">

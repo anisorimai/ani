@@ -409,7 +409,7 @@ export default function Sidebar({ isOpen, onClose, onNavigateToChat }) {
           onClick={() => setSettingsOpen(false)}
         >
           <div
-            className="w-full max-w-[380px] max-h-[80vh] flex flex-col rounded-2xl overflow-hidden animate-fade-in-scale"
+            className="w-full max-w-sm max-h-[88dvh] flex flex-col rounded-2xl overflow-hidden animate-fade-in-scale"
             style={{
               background: 'var(--sb-bg)',
               border: '1px solid var(--sb-brd)',

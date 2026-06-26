@@ -2,22 +2,8 @@ import { useState, useMemo } from "react";
 import { useProductionData } from "../hooks/useProductionData";
 import { useQualityData } from "../hooks/useQualityData";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-
-// ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
-const T = {
-  bg: "#f0f2f7",
-  surface: "#ffffff",
-  border: "#e8eaf0",
-  borderAlert: "#fcd9b6",
-  text: { primary: "#0f1117", secondary: "#5a6072", muted: "#9da3b4" },
-  green: { solid: "#16a34a", light: "#dcfce7", text: "#15803d" },
-  blue: { solid: "#2563eb", light: "#dbeafe", text: "#1d4ed8" },
-  purple: { solid: "#7c3aed", light: "#ede9fe", text: "#6d28d9" },
-  amber: { solid: "#d97706", light: "#fef3c7", text: "#b45309" },
-  red: { solid: "#dc2626", light: "#fee2e2", text: "#b91c1c" },
-  orange: { solid: "#ea580c", light: "#ffedd5", text: "#c2410c" },
-  pink: { solid: "#db2777", light: "#fce7f3", text: "#be185d" },
-};
+import useThemeStore from "../store/useThemeStore";
+import { getThemeTokens } from "../utils/themeTokens";
 
 // ─── DATA HELPERS ─────────────────────────────────────────────────────────────
 function fmtUnits(n) {
@@ -59,21 +45,6 @@ function formatActivityNote(key, value) {
 // ─── PALETTES & ICON LOOKUP TABLES ────────────────────────────────────────────
 const AREA_PALETTE  = ["#2563eb", "#16a34a", "#7c3aed", "#d97706", "#cbd5e1", "#db2777", "#0ea5e9"];
 const BATCH_PALETTE = ["#16a34a", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0ea5e9"];
-const ALERT_PALETTE = [
-  { color: T.red.text,    bg: T.red.light,    fill: "#dc2626" },
-  { color: T.amber.text,  bg: T.amber.light,  fill: "#d97706" },
-  { color: T.blue.text,   bg: T.blue.light,   fill: "#2563eb" },
-  { color: T.purple.text, bg: T.purple.light, fill: "#7c3aed" },
-  { color: T.green.text,  bg: T.green.light,  fill: "#16a34a" },
-];
-
-const AREA_ICON_CONFIG = [
-  { iconType: "droplet", iconBg: T.blue.light,   iconColor: T.blue.solid   },
-  { iconType: "gear",    iconBg: T.amber.light,  iconColor: T.amber.solid  },
-  { iconType: "box2",    iconBg: T.green.light,  iconColor: T.green.solid  },
-  { iconType: "package", iconBg: T.pink.light,   iconColor: T.pink.solid   },
-  { iconType: "box",     iconBg: T.purple.light, iconColor: T.purple.solid },
-];
 
 const PARAM_ICON_PATTERNS = [
   { pattern: "rpm",      iconType: "gear",      iconBg: "#ede9fe", iconColor: "#7c3aed" },
@@ -84,12 +55,7 @@ const PARAM_ICON_PATTERNS = [
   { pattern: "toc",      iconType: "flask",     iconBg: "#fce7f3", iconColor: "#db2777" },
 ];
 
-const ACTIVITY_ICON_PATTERNS = [
-  { pattern: "calibration", iconType: "cal",      iconBg: T.blue.light,   iconColor: T.blue.solid   },
-  { pattern: "maintenance",  iconType: "wrench",   iconBg: T.green.light,  iconColor: T.green.solid  },
-  { pattern: "changeover",   iconType: "swap",     iconBg: T.amber.light,  iconColor: T.amber.solid  },
-  { pattern: "qc",           iconType: "calcheck", iconBg: T.purple.light, iconColor: T.purple.solid },
-];
+// ACTIVITY_ICON_PATTERNS and AREA_ICON_CONFIG are computed inside the component (they use T)
 
 const ACTIVITY_NOTE_OVERRIDES = {
   preventive_maintenance_due: (v) => `${v} Due This Week`,
@@ -191,7 +157,7 @@ function buildBatchStatus(batches) {
 function buildCriticalParams(params, paramRanges) {
   return Object.entries(params).map(([col, value]) => {
     const meta = paramRanges?.[col] ?? { label: formatLabel(col), unit: "", min: 0, max: 100 };
-    const { iconType, iconBg, iconColor } = getIconByPattern(PARAM_ICON_PATTERNS, col, { iconType: "gauge", iconBg: "#f4f5f8", iconColor: "#5a6072" });
+    const { iconType, iconBg, iconColor } = getIconByPattern(PARAM_ICON_PATTERNS, col, { iconType: "gauge", iconBg: "var(--bg)", iconColor: "var(--txt2)" });
     const range = meta.max - meta.min || 1;
     return {
       label: meta.label,
@@ -204,7 +170,13 @@ function buildCriticalParams(params, paramRanges) {
   });
 }
 
-function buildActivities(activities) {
+function buildActivities(activities, T) {
+  const ACTIVITY_ICON_PATTERNS = [
+    { pattern: "calibration", iconType: "cal",      iconBg: T.blue.light,   iconColor: T.blue.solid   },
+    { pattern: "maintenance",  iconType: "wrench",   iconBg: T.green.light,  iconColor: T.green.solid  },
+    { pattern: "changeover",   iconType: "swap",     iconBg: T.amber.light,  iconColor: T.amber.solid  },
+    { pattern: "qc",           iconType: "calcheck", iconBg: T.purple.light, iconColor: T.purple.solid },
+  ];
   return Object.entries(activities).map(([key, value]) => {
     const { iconType, iconBg, iconColor } = getIconByPattern(ACTIVITY_ICON_PATTERNS, key, { iconType: "cal", iconBg: T.blue.light, iconColor: T.blue.solid });
     const baseKey = key.replace(/_due$|_scheduled$|_time$/, "");
@@ -217,7 +189,14 @@ function buildActivities(activities) {
   });
 }
 
-function buildInventory(areas) {
+function buildInventory(areas, T) {
+  const AREA_ICON_CONFIG = [
+    { iconType: "droplet", iconBg: T.blue.light,   iconColor: T.blue.solid   },
+    { iconType: "gear",    iconBg: T.amber.light,  iconColor: T.amber.solid  },
+    { iconType: "box2",    iconBg: T.green.light,  iconColor: T.green.solid  },
+    { iconType: "package", iconBg: T.pink.light,   iconColor: T.pink.solid   },
+    { iconType: "box",     iconBg: T.purple.light, iconColor: T.purple.solid },
+  ];
   const vals = Object.values(areas);
   const maxVal = Math.max(...vals) || 1;
   return Object.entries(areas).map(([key, value], i) => {
@@ -319,12 +298,13 @@ function Donut({ data, total, centerText, centerSub, size = 150, thickness = 18 
           />
         );
       })}
-      <text x={cx} y={cy - 7} textAnchor="middle" fontSize="15" fontWeight="700" fill={T.text.primary} fontFamily="Inter, system-ui, sans-serif"
-        style={{ transition: "all 0.15s" }}>
+      <text x={cx} y={cy - 7} textAnchor="middle" fontSize="15" fontWeight="700" fontFamily="Inter, system-ui, sans-serif"
+        style={{ fill: 'var(--txt)', transition: "all 0.15s" }}>
         {displayText}
       </text>
-      <text x={cx} y={cy + 10} textAnchor="middle" fontSize="10" fill={hovered !== null ? slices[hovered]?.color : T.text.muted}
-        fontFamily="Inter, system-ui, sans-serif" style={{ transition: "all 0.15s" }}>
+      <text x={cx} y={cy + 10} textAnchor="middle" fontSize="10" fill={hovered !== null ? slices[hovered]?.color : undefined}
+        fontFamily="Inter, system-ui, sans-serif"
+        style={{ fill: hovered !== null ? slices[hovered]?.color : 'var(--txt3)', transition: "all 0.15s" }}>
         {displaySub}
       </text>
     </svg>
@@ -341,8 +321,9 @@ const DASHBOARD_CSS = `
   @media (min-width: 540px)  { .pd-grid-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1024px) { .pd-grid-kpi { grid-template-columns: repeat(6, 1fr); gap: 10px; } }
 
-  /* Quality control row — 2 cols mobile, 4 cols on md+ */
+  /* Quality control row — 2 cols mobile, 3 on sm, 4 cols on lg+ */
   .pd-grid-quality { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 640px)  { .pd-grid-quality { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1024px) { .pd-grid-quality { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
 
   /* Charts top row — donuts + shift bar */
@@ -387,12 +368,12 @@ function Card({ children, style = {}, alert, className = "" }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background: T.surface,
-        border: `1px solid ${alert ? T.borderAlert : hov ? "#c8ccd8" : T.border}`,
+        background: 'var(--surf)',
+        border: `1px solid ${alert ? 'rgba(251,146,60,0.5)' : hov ? 'var(--brd2)' : 'var(--brd)'}`,
         borderRadius: 12,
         boxShadow: hov
-          ? "0 8px 28px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)"
-          : "0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03)",
+          ? "0 8px 28px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.08)"
+          : "0 1px 3px rgba(0,0,0,0.06)",
         transform: hov ? "translateY(-2px)" : "translateY(0)",
         transition: "all 0.2s ease",
         ...style,
@@ -407,8 +388,8 @@ function Card({ children, style = {}, alert, className = "" }) {
 function SectionTitle({ children, action }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: T.text.primary, letterSpacing: "0.01em" }}>{children}</span>
-      {action && <span style={{ fontSize: 11, color: T.blue.text, fontWeight: 600, cursor: "pointer" }}>{action}</span>}
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', letterSpacing: "0.01em" }}>{children}</span>
+      {action && <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 600, cursor: "pointer" }}>{action}</span>}
     </div>
   );
 }
@@ -417,12 +398,12 @@ function SectionTitle({ children, action }) {
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: "#fff", border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
-      <div style={{ fontWeight: 700, color: T.text.primary, marginBottom: 5 }}>{label}</div>
+    <div style={{ background: 'var(--surf)', border: '1px solid var(--brd)', borderRadius: 8, padding: "8px 12px", fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.15)" }}>
+      <div style={{ fontWeight: 700, color: 'var(--txt)', marginBottom: 5 }}>{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, color: T.text.secondary, marginBottom: 2 }}>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, color: 'var(--txt2)', marginBottom: 2 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: p.fill, display: "inline-block" }} />
-          {p.name}: <b style={{ color: T.text.primary, marginLeft: 2 }}>{p.value}</b>
+          {p.name}: <b style={{ color: 'var(--txt)', marginLeft: 2 }}>{p.value}</b>
         </div>
       ))}
     </div>
@@ -439,14 +420,14 @@ function ShiftBarChart({ data }) {
         <XAxis
           dataKey="shift"
           interval={0}
-          tick={{ fontSize: 10, fill: T.text.muted, fontFamily: "Inter, system-ui, sans-serif", angle: -30, textAnchor: "end", dy: 6 }}
+          tick={{ fontSize: 10, fill: 'var(--txt3)', fontFamily: "Inter, system-ui, sans-serif", angle: -30, textAnchor: "end", dy: 6 }}
           axisLine={false}
           tickLine={false}
           height={55}
         />
         <YAxis
           domain={[0, yMax]}
-          tick={{ fontSize: 10, fill: T.text.muted, fontFamily: "Inter, system-ui, sans-serif" }}
+          tick={{ fontSize: 10, fill: 'var(--txt3)', fontFamily: "Inter, system-ui, sans-serif" }}
           tickFormatter={(v) => `${v}K`}
           axisLine={false}
           tickLine={false}
@@ -493,10 +474,21 @@ function ParamGauge({ pct, color }) {
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function PharmaPlantDashboard() {
+  const { theme } = useThemeStore();
+  const T = getThemeTokens(theme === 'dark');
+
   const { data, loading: prodLoading, error: prodError } = useProductionData();
   const { data: qData, loading: qualLoading } = useQualityData();
 
   const loading = prodLoading || qualLoading;
+
+  const ALERT_PALETTE = [
+    { color: T.red.text,    bg: T.red.light,    fill: "#dc2626" },
+    { color: T.amber.text,  bg: T.amber.light,  fill: "#d97706" },
+    { color: T.blue.text,   bg: T.blue.light,   fill: "#2563eb" },
+    { color: T.purple.text, bg: T.purple.light, fill: "#7c3aed" },
+    { color: T.green.text,  bg: T.green.light,  fill: "#16a34a" },
+  ];
 
   const derived = useMemo(() => {
     if (!data?.today) return null;
@@ -515,8 +507,8 @@ export default function PharmaPlantDashboard() {
       productionByArea: buildProductionByArea(today.areas),
       batchStatus: buildBatchStatus(today.batches),
       criticalParams: buildCriticalParams(today.params, paramRanges),
-      activities: buildActivities(today.activities),
-      inventoryData: buildInventory(today.areas),
+      activities: buildActivities(today.activities, T),
+      inventoryData: buildInventory(today.areas, T),
       shiftChartData: shiftData ?? [],
       alerts: Object.entries(today.alerts).map(([key, count], i) => ({
         label: formatLabel(key),
@@ -527,11 +519,11 @@ export default function PharmaPlantDashboard() {
       batchTotal: today.batches.total,
       qualityMetrics: qData?.today ?? null,
     };
-  }, [data, qData]);
+  }, [data, qData, theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
-      <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: T.bg, minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.text.muted, fontSize: 14 }}>
+      <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: 'var(--bg)', minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: 'var(--txt3)', fontSize: 14 }}>
         Loading dashboard data…
       </div>
     );
@@ -539,7 +531,7 @@ export default function PharmaPlantDashboard() {
 
   if (prodError || !derived) {
     return (
-      <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: T.bg, minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.red.text, fontSize: 14 }}>
+      <div style={{ fontFamily: "Inter, system-ui, sans-serif", background: 'var(--bg)', minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.red.text, fontSize: 14 }}>
         Failed to load data: {prodError}
       </div>
     );
@@ -548,27 +540,27 @@ export default function PharmaPlantDashboard() {
   const { kpiCards, productionByArea, batchStatus, criticalParams, activities, inventoryData, shiftChartData, alerts, totalProduced, batchTotal, qualityMetrics } = derived;
 
   return (
-    <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: T.bg, minHeight: "100%" }}>
+    <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: 'var(--bg)', minHeight: "100%" }}>
       <style>{DASHBOARD_CSS}</style>
 
       {/* ── STICKY HEADER ──────────────────────────────────────────────────── */}
       <div style={{
         position: "sticky", top: 0, zIndex: 20,
-        background: "#fff", borderBottom: `1px solid ${T.border}`,
+        background: 'var(--surf)', borderBottom: '1px solid var(--brd)',
         padding: "0 16px", display: "flex", alignItems: "center",
         justifyContent: "space-between", height: 52, flexShrink: 0,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 8, background: "linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 8, background: T.blue.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={T.blue.solid} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/>
               <path d="M8.5 8.5 16 16"/>
             </svg>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="pd-header-title" style={{ fontWeight: 800, color: T.text.primary, letterSpacing: "-0.01em" }}>Pharma Manufacturing Plant</div>
-            <div style={{ fontSize: 10.5, color: T.text.muted, marginTop: 1 }}>Operations Overview · {data.latestDate}</div>
+            <div className="pd-header-title" style={{ fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.01em" }}>Pharma Manufacturing Plant</div>
+            <div style={{ fontSize: 10.5, color: 'var(--txt3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Operations Overview · {data.latestDate}</div>
           </div>
         </div>
         <div style={{ flexShrink: 0, marginLeft: 8 }}>
@@ -587,22 +579,22 @@ export default function PharmaPlantDashboard() {
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: k.gradientA }} />
               {/* Label row — icon sits right, label gets all remaining width */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8, gap: 6 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{k.label}</span>
+                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500, lineHeight: 1.35, flex: 1, minWidth: 0 }}>{k.label}</span>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: k.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon type={k.iconType} size={13} color={k.iconColor} />
                 </div>
               </div>
               {/* Value row */}
               <div style={{ marginBottom: 6 }}>
-                <span className="pd-kpi-value" style={{ fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>{k.value}</span>
-                {k.unit && <span style={{ fontSize: 11, color: T.text.muted, marginLeft: 4, fontWeight: 500 }}>{k.unit}</span>}
+                <span className="pd-kpi-value" style={{ fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.03em" }}>{k.value}</span>
+                {k.unit && <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 4, fontWeight: 500 }}>{k.unit}</span>}
               </div>
               {/* Sparkline — below value, no longer competing with label */}
               <div className="pd-sparkline-wrap"><Sparkline data={k.sparkData} color={k.gradientA} filled /></div>
-              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
-              <div style={{ fontSize: 11, color: k.deltaPositive ? T.green.text : T.orange.text, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
-                <span style={{ fontSize: 13 }}>{k.deltaPositive ? "↑" : "⚠"}</span>
-                <span>{k.delta}</span>
+              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
+              <div style={{ fontSize: 11, color: k.deltaPositive ? T.green.text : T.orange.text, fontWeight: 600, display: "flex", alignItems: "center", gap: 3, overflow: "hidden" }}>
+                <span style={{ fontSize: 13, flexShrink: 0 }}>{k.deltaPositive ? "↑" : "⚠"}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{k.delta}</span>
               </div>
             </Card>
           ))}
@@ -616,17 +608,17 @@ export default function PharmaPlantDashboard() {
             <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.green.solid }} />
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>Audit Score</span>
+                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>Audit Score</span>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: T.green.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Icon type="shield" size={13} color={T.green.solid} />
                 </div>
               </div>
               <div style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>
+                <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.03em" }}>
                   {qualityMetrics.auditScore.toFixed(1)}%
                 </span>
               </div>
-              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
+              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
               <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3, color: qualityMetrics.auditScore >= qualityMetrics.prevAuditScore ? T.green.text : T.red.text }}>
                 <span style={{ fontSize: 13 }}>{qualityMetrics.auditScore >= qualityMetrics.prevAuditScore ? "↑" : "↓"}</span>
                 <span>{Math.abs(qualityMetrics.auditScore - qualityMetrics.prevAuditScore).toFixed(1)}% vs previous audit</span>
@@ -637,7 +629,7 @@ export default function PharmaPlantDashboard() {
             <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.amber.solid }} />
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>Deviations</span>
+                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>Deviations</span>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: T.amber.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Icon type="alertTri" size={13} color={T.amber.solid} />
                 </div>
@@ -654,8 +646,8 @@ export default function PharmaPlantDashboard() {
                   </div>
                 ))}
               </div>
-              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
-              <div style={{ fontSize: 11, color: T.text.muted, fontWeight: 500 }}>
+              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
+              <div style={{ fontSize: 11, color: 'var(--txt3)', fontWeight: 500 }}>
                 {qualityMetrics.deviationCritical + qualityMetrics.deviationMajor + qualityMetrics.deviationMinor} total deviations today
               </div>
             </Card>
@@ -664,16 +656,16 @@ export default function PharmaPlantDashboard() {
             <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.purple.solid }} />
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>CAPA Status</span>
+                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>CAPA Status</span>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: T.purple.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Icon type="calcheck" size={13} color={T.purple.solid} />
                 </div>
               </div>
               <div style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: T.text.primary, letterSpacing: "-0.03em" }}>{qualityMetrics.capaPending}</span>
-                <span style={{ fontSize: 11, color: T.text.muted, marginLeft: 4, fontWeight: 500 }}>Pending</span>
+                <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.03em" }}>{qualityMetrics.capaPending}</span>
+                <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 4, fontWeight: 500 }}>Pending</span>
               </div>
-              <div style={{ height: 1, background: T.border, marginBottom: 8 }} />
+              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
               <div style={{ display: "flex", gap: 6 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: T.red.text, background: T.red.light, borderRadius: 5, padding: "2px 6px" }}>
                   {qualityMetrics.capaCritical} Critical
@@ -688,7 +680,7 @@ export default function PharmaPlantDashboard() {
             <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.blue.solid }} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, marginBottom: 10 }}>
-                <span style={{ fontSize: 11, color: T.text.secondary, fontWeight: 500 }}>Upcoming Audits</span>
+                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>Upcoming Audits</span>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: T.blue.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Icon type="cal" size={13} color={T.blue.solid} />
                 </div>
@@ -698,10 +690,10 @@ export default function PharmaPlantDashboard() {
                   const priorityColor = audit.priority === "High" ? T.red.text : audit.priority === "Medium" ? T.amber.text : T.green.text;
                   const priorityBg   = audit.priority === "High" ? T.red.light  : audit.priority === "Medium" ? T.amber.light  : T.green.light;
                   return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < qualityMetrics.upcomingAudits.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < qualityMetrics.upcomingAudits.length - 1 ? '1px solid var(--brd)' : "none" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{audit.name}</div>
-                        <div style={{ fontSize: 9.5, color: T.text.muted, marginTop: 1 }}>{audit.dept} · {audit.date}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--txt)', whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{audit.name}</div>
+                        <div style={{ fontSize: 9.5, color: 'var(--txt3)', marginTop: 1 }}>{audit.dept} · {audit.date}</div>
                       </div>
                       <span style={{ fontSize: 9, fontWeight: 700, color: priorityColor, background: priorityBg, borderRadius: 4, padding: "2px 5px", flexShrink: 0 }}>
                         {audit.priority}
@@ -767,7 +759,7 @@ export default function PharmaPlantDashboard() {
 
           {/* Upcoming Activities */}
           <Card style={{ padding: "16px 18px" }}>
-            <SectionTitle action="View All →">Upcoming Activities</SectionTitle>
+            <SectionTitle>Upcoming Activities</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {activities.map((a, i) => (
                 <ActivityRow key={a.label} a={a} last={i === activities.length - 1} />
@@ -784,7 +776,7 @@ export default function PharmaPlantDashboard() {
           <Card style={{ padding: "16px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: T.text.primary }}>Critical Parameters</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>Critical Parameters</span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: T.green.text, background: T.green.light, padding: "2px 8px", borderRadius: 10 }}>● Live</span>
               </div>
             </div>
@@ -797,7 +789,7 @@ export default function PharmaPlantDashboard() {
 
           {/* Alerts Summary *\/}
           <Card style={{ padding: "16px 18px" }}>
-            <SectionTitle action="View All →">Alerts Summary</SectionTitle>
+            <SectionTitle>Alerts Summary</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {alerts.map(a => (
                 <AlertRow key={a.label} a={a} />
@@ -828,13 +820,13 @@ function DonutLegendRow({ d }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block", flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+        <span style={{ fontSize: 11, color: 'var(--txt2)', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        <div style={{ width: 36, height: 4, borderRadius: 4, background: "#eef0f5", overflow: "hidden" }}>
+        <div style={{ width: 36, height: 4, borderRadius: 4, background: "rgba(128,128,128,0.15)", overflow: "hidden" }}>
           <div style={{ width: `${d.value * 3}%`, height: "100%", background: d.color, borderRadius: 4, transition: "width 0.3s" }} />
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.text.primary, minWidth: 26, textAlign: "right" }}>{d.value}%</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt)', minWidth: 26, textAlign: "right" }}>{d.value}%</span>
       </div>
     </div>
   );
@@ -855,11 +847,11 @@ function BatchLegendRow({ d }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.color, display: "inline-block", flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+        <span style={{ fontSize: 11, color: 'var(--txt2)', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.text.primary }}>{d.value}</span>
-        <span style={{ fontSize: 10, color: T.text.muted, background: hov ? `${d.color}20` : "#f4f5f8", padding: "1px 5px", borderRadius: 4, transition: "background 0.15s" }}>{d.pct}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt)' }}>{d.value}</span>
+        <span style={{ fontSize: 10, color: 'var(--txt3)', background: hov ? `${d.color}20` : 'var(--bg)', padding: "1px 5px", borderRadius: 4, transition: "background 0.15s" }}>{d.pct}</span>
       </div>
     </div>
   );
@@ -883,14 +875,14 @@ function InventoryRow({ inv }) {
           <div style={{ width: 28, height: 28, borderRadius: 7, background: inv.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: hov ? "scale(1.1)" : "scale(1)", transition: "transform 0.15s" }}>
             <Icon type={inv.iconType} size={13} color={inv.iconColor} />
           </div>
-          <span style={{ fontSize: 11.5, color: T.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.label}</span>
+          <span style={{ fontSize: 11.5, color: 'var(--txt2)', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.label}</span>
         </div>
         <div style={{ flexShrink: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: T.text.primary }}>{inv.value}</span>
-          <span style={{ fontSize: 10, color: T.text.muted, marginLeft: 3 }}>{inv.unit}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>{inv.value}</span>
+          <span style={{ fontSize: 10, color: 'var(--txt3)', marginLeft: 3 }}>{inv.unit}</span>
         </div>
       </div>
-      <div style={{ height: 4, borderRadius: 4, background: "#eef0f5", overflow: "hidden" }}>
+      <div style={{ height: 4, borderRadius: 4, background: "rgba(128,128,128,0.15)", overflow: "hidden" }}>
         <div style={{ width: `${inv.bar * 100}%`, height: "100%", background: inv.iconColor, borderRadius: 4, opacity: hov ? 1 : 0.7, transition: "all 0.3s" }} />
       </div>
     </div>
@@ -906,7 +898,7 @@ function ActivityRow({ a, last }) {
       style={{
         display: "flex", alignItems: "center", gap: 10,
         padding: "9px 6px",
-        borderBottom: last ? "none" : `1px solid ${T.border}`,
+        borderBottom: last ? "none" : '1px solid var(--brd)',
         borderRadius: 8,
         background: hov ? `${a.iconColor}08` : "transparent",
         cursor: "pointer",
@@ -917,7 +909,7 @@ function ActivityRow({ a, last }) {
         <Icon type={a.iconType} size={14} color={a.iconColor} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: hov ? T.text.primary : T.text.primary, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.label}</div>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--txt)', marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.label}</div>
         <div style={{ fontSize: 10.5, color: a.iconColor, fontWeight: 600 }}>{a.note}</div>
       </div>
       {hov && <span style={{ fontSize: 10, color: a.iconColor, fontWeight: 700, flexShrink: 0 }}>→</span>}
@@ -952,11 +944,11 @@ function ParamCard({ p }) {
         <div style={{ width: 22, height: 22, borderRadius: 5, background: p.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Icon type={p.iconType} size={11} color={p.iconColor} />
         </div>
-        <span style={{ fontSize: 9.5, color: T.text.muted, lineHeight: 1.3, fontWeight: 500 }}>{p.label}</span>
+        <span style={{ fontSize: 9.5, color: 'var(--txt3)', lineHeight: 1.3, fontWeight: 500 }}>{p.label}</span>
       </div>
       <div style={{ width: "100%", marginBottom: 8 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: T.text.primary, letterSpacing: "-0.02em" }}>{p.value}</span>
-        <span style={{ fontSize: 10, color: T.text.muted, marginLeft: 2 }}>{p.unit}</span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.02em" }}>{p.value}</span>
+        <span style={{ fontSize: 10, color: 'var(--txt3)', marginLeft: 2 }}>{p.unit}</span>
       </div>
       <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 4, background: p.iconBg, borderRadius: 6, padding: "3px 7px" }}>
         <span style={{ width: 5, height: 5, borderRadius: "50%", background: p.iconColor, display: "inline-block", flexShrink: 0 }} />

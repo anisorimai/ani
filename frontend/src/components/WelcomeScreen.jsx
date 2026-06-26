@@ -3,11 +3,11 @@ import TextInput from './TextInput';
 import VoiceButton from './VoiceButton';
 
 const DOMAIN_META = {
-  Production: { icon: '🏭', color: '#6366f1', label: 'Production' },
+  Production: { icon: '🏭', color: '#1D6CB8', label: 'Production' },
   Packaging:  { icon: '📦', color: '#0ea5e9', label: 'Packaging'  },
   Quality:    { icon: '📋', color: '#10b981', label: 'Quality'    },
   Logistics:  { icon: '🚛', color: '#f59e0b', label: 'Logistics'  },
-  Enterprise: { icon: '📊', color: '#8b5cf6', label: 'Enterprise' },
+  Enterprise: { icon: '📊', color: '#7C3AED', label: 'Enterprise' },
 };
 
 const DOMAIN_SUGGESTIONS = {
@@ -85,7 +85,7 @@ export default function WelcomeScreen({
           <VoiceButton onRecordComplete={onVoiceClick} disabled={isBusy && !isRecording} />
           <TextInput onSend={onTextSend} disabled={isBusy} />
         </div>
-        <p className="hidden md:block text-[11px] text-[var(--txt3)] opacity-50 mt-1.5 ml-1">
+        <p className="hidden md:block text-[11px] text-[var(--txt2)] mt-1.5 text-center">
           Press Enter to send · Shift+Enter for new line · Space to toggle voice
         </p>
       </div>
@@ -110,7 +110,7 @@ export default function WelcomeScreen({
       </div>
 
       {/* ── Domain-specific quick prompts ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
         {suggestions.map((s) => (
           <button
             key={s.label}

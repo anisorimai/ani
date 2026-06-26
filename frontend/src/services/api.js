@@ -263,8 +263,11 @@ class _VoxaWebSocket {
     if (data.done) {
       if (this._buf && this._onToken) { this._onToken(this._buf); this._buf = ''; }
       const cb = this._onComplete;
+      const savedData = data;
       this._clearHandlers();
-      if (cb) cb(null, data);
+      // Defer finalization off the message handler so the browser isn't blocked
+      // by React's commit phase (addMessage + markdown render) during the event.
+      if (cb) setTimeout(() => cb(null, savedData), 0);
     }
   }
 
