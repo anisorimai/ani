@@ -44,6 +44,7 @@ from llm.client import LLMClient, get_llm_client
 from orchestrator.analytics_executor import run_analytics
 from orchestrator.collection_selector import select_collections
 from orchestrator.context_builder import build_analytics_context, build_context, build_merged_context, build_rag_context, build_rag_only_context
+from orchestrator.date_utils import find_date_field, resolve_time_range_to_filter
 from orchestrator.source_selector import compute_rag_confidence, select_context_source
 from orchestrator.followup_engine import generate_followups
 from orchestrator.intent_classifier import classify_intent
@@ -219,6 +220,50 @@ def _try_direct_count_response(
 import prompts.intents as _intents
 _NO_DATA_SYSTEM = _intents.NO_DATA
 
+
+# ── Dashboard-scope helpers ───────────────────────────────────────────────────
+
+def _get_collection_schema(
+    dashboard_context: str,
+    metadata: dict,
+) -> tuple[list[str], str]:
+    """
+    Return (fields, human_label) for the collection locked to *dashboard_context*.
+    Returns ([], '') when the context is unscoped (e.g. Enterprise).
+    Fields are sourced live from collection metadata — nothing is hardcoded.
+    """
+    if dashboard_context not in _intents.SCOPED_COLLECTION:
+        return [], ""
+    coll = _intents.SCOPED_COLLECTION[dashboard_context]
+    fields: list[str] = metadata.get(coll, {}).get("fields", [])
+    label: str = dashboard_context.replace("_", " ").title()
+    return fields, label
+
+
+def _build_scope_restriction(dashboard_context: str, metadata: dict) -> str:
+    """
+    Build a scope-enforcement instruction injected into the LLM narration prompt.
+    Tells the LLM exactly which collection's data it received and that it must
+    not invent or reference values from any other dataset.
+    Returns '' when the context is unscoped.
+    """
+    if dashboard_context not in _intents.SCOPED_COLLECTION:
+        return ""
+    coll = _intents.SCOPED_COLLECTION[dashboard_context]
+    label = dashboard_context.replace("_", " ").title()
+    fields: list[str] = metadata.get(coll, {}).get("fields", [])
+    fields_hint = f"\n  Available fields: {', '.join(fields)}." if fields else ""
+    return (
+        f"You are operating in the {label} Dashboard scope. "
+        f"The data above comes exclusively from the {coll} dataset.{fields_hint}\n"
+        f"CRITICAL SCOPE RULES:\n"
+        f"- Answer ONLY from the data provided in the DATA CONTEXT above.\n"
+        f"- Do NOT reference, invent, or substitute values from any other dataset or from general knowledge.\n"
+        f"- If a requested metric is not present in the data above, state clearly that it is not "
+        f"available in the {label} Dashboard.\n"
+        f"- Never hallucinate field values, counts, or percentages not present in the data."
+    )
+
 _COMPARISON_SUFFIX = (
     "\n\nNote: This is a COMPARISON query. Highlight differences, deltas, and "
     "percentage changes. Use a table when multiple rows are compared."
@@ -290,185 +335,10 @@ def _build_exact_filter(filters: dict, fields: list[str]) -> dict:
     return resolved
 
 
-def _find_date_field(fields: list) -> Optional[str]:
-    """
-    Detect the primary date field from a collection's field list.
-    Checks known names in priority order, then falls back to any field containing 'date'.
-    """
-    _PRIORITY = [
-        "record_date", "date", "appointment_date", "operation_date",
-        "inspection_date", "billing_date", "scheduled_date", "discharge_date",
-        "admit_date", "created_at", "updated_at", "timestamp",
-    ]
-    fields_lower = {f.lower(): f for f in fields}
-    for name in _PRIORITY:
-        if name in fields_lower:
-            return fields_lower[name]
-    for f in fields:
-        if "date" in f.lower():
-            return f
-    return None
-
-
-def _resolve_time_range_to_filter(time_range: str, date_field: str) -> dict:
-    """
-    Convert a natural-language time_range string into a MongoDB date range filter.
-    Uses datetime.today() as the live reference — no hardcoded dates.
-    Supports: next/last N days/weeks/months/years, this/last week/month/year,
-              today, yesterday, Q1-Q4 YYYY, month-name YYYY, plain year, specific dates.
-    """
-    import calendar as _cal
-    from datetime import date, timedelta
-    import re as _re
-
-    today = date.today()
-    tr = time_range.lower().strip()
-
-    # next N days/weeks/months/years
-    m = _re.match(r"next\s+(\d+)\s+(day|week|month|year)s?", tr)
-    if m:
-        n, unit = int(m.group(1)), m.group(2)
-        start = today + timedelta(days=1)
-        if unit == "day":
-            end = today + timedelta(days=n)
-        elif unit == "week":
-            end = today + timedelta(weeks=n)
-        elif unit == "month":
-            end = today + timedelta(days=n * 30)
-        else:
-            end = today + timedelta(days=n * 365)
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # last/past N days/weeks/months/years
-    m = _re.match(r"(?:last|past)\s+(\d+)\s+(day|week|month|year)s?", tr)
-    if m:
-        n, unit = int(m.group(1)), m.group(2)
-        end = today
-        if unit == "day":
-            start = today - timedelta(days=n)
-        elif unit == "week":
-            start = today - timedelta(weeks=n)
-        elif unit == "month":
-            start = today - timedelta(days=n * 30)
-        else:
-            start = today - timedelta(days=n * 365)
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # today / yesterday
-    if tr == "today":
-        return {date_field: {"$gte": str(today), "$lte": str(today)}}
-    if tr == "yesterday":
-        yd = today - timedelta(days=1)
-        return {date_field: {"$gte": str(yd), "$lte": str(yd)}}
-
-    # this week (Mon–Sun)
-    if tr == "this week":
-        start = today - timedelta(days=today.weekday())
-        end = start + timedelta(days=6)
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # last week / previous week
-    if tr in ("last week", "previous week"):
-        start = today - timedelta(days=today.weekday() + 7)
-        end = start + timedelta(days=6)
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # next week
-    if tr == "next week":
-        start = today + timedelta(days=7 - today.weekday())
-        end = start + timedelta(days=6)
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # this month
-    if tr == "this month":
-        start = today.replace(day=1)
-        end = today.replace(day=_cal.monthrange(today.year, today.month)[1])
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # last month / previous month
-    if tr in ("last month", "previous month"):
-        first_this = today.replace(day=1)
-        end = first_this - timedelta(days=1)
-        start = end.replace(day=1)
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # next month
-    if tr == "next month":
-        if today.month == 12:
-            start = today.replace(year=today.year + 1, month=1, day=1)
-        else:
-            start = today.replace(month=today.month + 1, day=1)
-        end = start.replace(day=_cal.monthrange(start.year, start.month)[1])
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # this quarter
-    if tr == "this quarter":
-        q = (today.month - 1) // 3
-        q_start_month = q * 3 + 1
-        q_end_month = q_start_month + 2
-        start = today.replace(month=q_start_month, day=1)
-        end = today.replace(month=q_end_month, day=_cal.monthrange(today.year, q_end_month)[1])
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # this year
-    if tr == "this year":
-        return {date_field: {"$gte": f"{today.year}-01-01", "$lte": f"{today.year}-12-31"}}
-
-    # last year / previous year
-    if tr in ("last year", "previous year"):
-        y = today.year - 1
-        return {date_field: {"$gte": f"{y}-01-01", "$lte": f"{y}-12-31"}}
-
-    # next year
-    if tr == "next year":
-        y = today.year + 1
-        return {date_field: {"$gte": f"{y}-01-01", "$lte": f"{y}-12-31"}}
-
-    # Q1-Q4 YYYY (e.g. "Q2 2026")
-    m = _re.match(r"q([1-4])\s*(\d{4})", tr)
-    if m:
-        q, year = int(m.group(1)), int(m.group(2))
-        q_start_month = (q - 1) * 3 + 1
-        q_end_month = q * 3
-        start = date(year, q_start_month, 1)
-        end = date(year, q_end_month, _cal.monthrange(year, q_end_month)[1])
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # Month name + optional year (e.g. "june 2026", "january")
-    _MONTHS = {
-        "january": 1, "february": 2, "march": 3, "april": 4,
-        "may": 5, "june": 6, "july": 7, "august": 8,
-        "september": 9, "october": 10, "november": 11, "december": 12,
-    }
-    m = _re.match(r"(" + "|".join(_MONTHS) + r")(?:\s+(\d{4}))?", tr)
-    if m:
-        month_num = _MONTHS[m.group(1)]
-        year = int(m.group(2)) if m.group(2) else today.year
-        start = date(year, month_num, 1)
-        end = date(year, month_num, _cal.monthrange(year, month_num)[1])
-        return {date_field: {"$gte": str(start), "$lte": str(end)}}
-
-    # Plain year (e.g. "2026")
-    m = _re.match(r"^((?:19|20)\d{2})$", tr)
-    if m:
-        year = int(m.group(1))
-        return {date_field: {"$gte": f"{year}-01-01", "$lte": f"{year}-12-31"}}
-
-    # Specific date: DD/MM/YYYY or MM/DD/YYYY (a > 12 forces day-first)
-    m = _re.match(r"(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?", tr)
-    if m:
-        try:
-            a, b = int(m.group(1)), int(m.group(2))
-            year = int(m.group(3)) if m.group(3) else today.year
-            if year < 100:
-                year += 2000
-            d = date(year, b, a) if a > 12 else date(year, a, b)
-            return {date_field: {"$gte": str(d), "$lte": str(d)}}
-        except ValueError:
-            pass
-
-    logger.debug("[TIME_FILTER] unrecognised time_range %r — no date filter applied", time_range)
-    return {}
+# _find_date_field and _resolve_time_range_to_filter are now in date_utils.
+# Keep local aliases so existing call sites below don't need changing.
+_find_date_field = find_date_field
+_resolve_time_range_to_filter = resolve_time_range_to_filter
 
 
 class QueryOrchestrator:
@@ -566,6 +436,15 @@ class QueryOrchestrator:
         # context so stale entities/time ranges never leak into them.
         t0 = time.perf_counter()
         _sess_ctx = self._ctx_store.get(session_id) if session_id else AnalyticalContext()
+
+        # If the user has switched dashboards, clear stale collection context immediately
+        # so references from the previous dashboard never contaminate the new scope.
+        if session_id and dashboard_context in _intents.SCOPED_COLLECTION:
+            _expected_coll = _intents.SCOPED_COLLECTION[dashboard_context]
+            if _sess_ctx.active_collections and _expected_coll not in _sess_ctx.active_collections:
+                self._ctx_store.reset_topic(session_id)
+                _sess_ctx = self._ctx_store.get(session_id)
+
         if is_followup_query(query, _sess_ctx):
             resolved_query = resolve_references(query, _sess_ctx)
         else:
@@ -576,7 +455,11 @@ class QueryOrchestrator:
         timings["reference_resolution_ms"] = _ms(t0)
         # ── Stage 1: Query normalization ──────────────────────────────────────
         t1 = time.perf_counter()
-        query_meta = await normalize_query(resolved_query, self._llm)
+        _schema_fields, _dash_label = _get_collection_schema(dashboard_context, self._metadata)
+        query_meta = await normalize_query(
+            resolved_query, self._llm,
+            schema_fields=_schema_fields, dashboard_label=_dash_label,
+        )
         timings["query_normalization_ms"] = _ms(t1)
         logger.info(
             "[STAGE 1] normalized: metrics=%s filters=%s time=%s",
@@ -694,6 +577,15 @@ class QueryOrchestrator:
         # reset the topic context (see process() for rationale)
         pipeline_start = time.perf_counter()
         _sess_ctx = self._ctx_store.get(session_id) if session_id else AnalyticalContext()
+
+        # If the user has switched dashboards, clear stale collection context immediately
+        # so references from the previous dashboard never contaminate the new scope.
+        if session_id and dashboard_context in _intents.SCOPED_COLLECTION:
+            _expected_coll = _intents.SCOPED_COLLECTION[dashboard_context]
+            if _sess_ctx.active_collections and _expected_coll not in _sess_ctx.active_collections:
+                self._ctx_store.reset_topic(session_id)
+                _sess_ctx = self._ctx_store.get(session_id)
+
         if is_followup_query(query, _sess_ctx):
             resolved_query = resolve_references(query, _sess_ctx)
         else:
@@ -704,8 +596,10 @@ class QueryOrchestrator:
 
         # Stage 1: Query normalization (run with intent classification in parallel)
         t12 = time.perf_counter()
+        _schema_fields, _dash_label = _get_collection_schema(dashboard_context, self._metadata)
+        _scope_restr = _build_scope_restriction(dashboard_context, self._metadata)
         query_meta, intent = await asyncio.gather(
-            normalize_query(resolved_query, self._llm),
+            normalize_query(resolved_query, self._llm, schema_fields=_schema_fields, dashboard_label=_dash_label),
             classify_intent(resolved_query, self._llm),
         )
         logger.info(
@@ -885,6 +779,7 @@ class QueryOrchestrator:
                 user_query=resolved_query,
                 citation_filenames=source_filenames,
                 analytics_results=analytics_results,
+                scope_restriction=_scope_restr,
             )
             msgs = [{"role": "system", "content": system_content}]
             msgs.append({"role": "user", "content": resolved_query})
@@ -954,6 +849,7 @@ class QueryOrchestrator:
                 fetched=None if ctx_source == "rag_only" else fetched,
                 user_query=resolved_query,
                 citation_filenames=source_filenames,
+                scope_restriction=_scope_restr,
             )
             msgs = [{"role": "system", "content": system_content}]
             msgs.append({"role": "user", "content": resolved_query})
@@ -1062,6 +958,7 @@ class QueryOrchestrator:
             fetched=None if ctx_source == "rag_only" else fetched,
             user_query=resolved_query,
             citation_filenames=source_filenames,
+            scope_restriction=_scope_restr,
         )
         msgs = [{"role": "system", "content": system_content}]
         msgs.append({"role": "user", "content": resolved_query})
@@ -1098,6 +995,7 @@ class QueryOrchestrator:
     ) -> StructuredResponse:
         """Stages 3-9 for the non-streaming path."""
         pipeline_start = time.perf_counter()
+        _scope_restr = _build_scope_restriction(dashboard_context, self._metadata)
 
         # Stage 3: Collection selection
         t3 = time.perf_counter()
@@ -1206,6 +1104,7 @@ class QueryOrchestrator:
                 user_query=query,
                 citation_filenames=source_filenames,
                 analytics_results=analytics_results,
+                scope_restriction=_scope_restr,
             )
             msgs = [{"role": "system", "content": system_content}]
             msgs.append({"role": "user", "content": query})
@@ -1265,6 +1164,7 @@ class QueryOrchestrator:
                 fetched=None if ctx_source == "rag_only" else fetched,
                 user_query=query,
                 citation_filenames=source_filenames,
+                scope_restriction=_scope_restr,
             )
             msgs = [{"role": "system", "content": system_content}]
             msgs.append({"role": "user", "content": query})
@@ -1365,6 +1265,7 @@ class QueryOrchestrator:
             context_text, intent, low_conf, query_meta=query_meta,
             fetched=None if ctx_source == "rag_only" else fetched,
             user_query=query, citation_filenames=source_filenames,
+            scope_restriction=_scope_restr,
         )
         msgs = [{"role": "system", "content": system_content}]
         msgs.append({"role": "user", "content": query})
@@ -1833,6 +1734,7 @@ class QueryOrchestrator:
         user_query: str = "",
         citation_filenames: Optional[list] = None,
         analytics_results: Optional[dict] = None,
+        scope_restriction: str = "",
     ) -> str:
         """Build the retrieval-aware system prompt with intent-specific context."""
         doc_counts: dict[str, int] = {}    # filtered/matching counts
@@ -1885,6 +1787,7 @@ class QueryOrchestrator:
             doc_counts=doc_counts,
             total_counts=total_counts,
             has_filters=actually_filtered,
+            scope_restriction=scope_restriction,
         )
         return _build_prompt(ctx)
 

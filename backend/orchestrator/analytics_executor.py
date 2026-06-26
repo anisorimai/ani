@@ -11,6 +11,7 @@ import logging
 import re as _re
 from typing import Any, Optional
 
+from orchestrator.date_utils import find_date_field, resolve_time_range_to_filter
 from orchestrator.query_normalizer import QueryMeta
 from repositories.generic_repository import GenericRepository
 
@@ -253,6 +254,67 @@ async def _top_n_by_field(
         return []
 
 
+async def _group_by_metric(
+    repo: GenericRepository,
+    collection: str,
+    group_field: str,
+    metric_field_ops: list[tuple[str, str]],
+    mongo_filter: dict,
+) -> list[dict]:
+    """
+    Combined group-by + metric aggregation in a single MongoDB pipeline.
+
+    Computes count AND all requested metric aggregations (avg/sum/max/min) per
+    group value in one round-trip.  This avoids the double-division error that
+    occurs when a global average is divided again by the number of groups.
+
+    Returns a list of dicts: [{value, count, "<op>_<field>": value, ...}, ...]
+    sorted by count descending.
+    """
+    group_expr: dict[str, Any] = {
+        "_id": f"${group_field}",
+        "count": {"$sum": 1},
+    }
+    for op, field in metric_field_ops:
+        mongo_op = f"${op}"
+        group_expr[f"{op}_{field}"] = {mongo_op: f"${field}"}
+
+    pipeline: list[dict] = [
+        {"$match": mongo_filter or {}},
+        {"$group": group_expr},
+        {"$sort": {"count": -1}},
+        {"$limit": 100},
+    ]
+    try:
+        docs = await repo.aggregate(collection, pipeline)
+        rows: list[dict] = []
+        for d in docs:
+            if d.get("_id") is None:
+                continue
+            row: dict[str, Any] = {"value": str(d["_id"]), "count": d["count"]}
+            for op, field in metric_field_ops:
+                key = f"{op}_{field}"
+                if key in d:
+                    raw = d[key]
+                    # Include None explicitly so context_builder can render "N/A"
+                    # instead of omitting the metric and letting the LLM confuse
+                    # the record count with the metric value.
+                    row[key] = (round(float(raw), 2) if isinstance(raw, float) else raw) if raw is not None else None
+                else:
+                    row[key] = None
+            rows.append(row)
+        logger.info(
+            "[ANALYTICS] _group_by_metric: collection=%s group=%s ops=%s rows=%d",
+            collection, group_field,
+            [f"{op}_{f}" for op, f in metric_field_ops],
+            len(rows),
+        )
+        return rows
+    except Exception as exc:
+        logger.debug("[ANALYTICS] _group_by_metric failed: %s", exc)
+        return []
+
+
 # ── Main entry point ─────────────────────────────────────────────────────────
 
 async def run_analytics(
@@ -292,40 +354,86 @@ async def _run_analytics_inner(
         all_fields = coll_meta.get("fields", [])
 
         mongo_filter = _build_mongo_filter(query_meta.filters, all_fields)
-        coll_results: dict[str, Any] = {"filter": mongo_filter}
+
+        # Merge time-range filter so all aggregations are scoped to the requested period.
+        time_filter: dict = {}
+        if getattr(query_meta, "time_range", None):
+            _date_field = find_date_field(all_fields)
+            if _date_field:
+                time_filter = resolve_time_range_to_filter(query_meta.time_range, _date_field)
+                if time_filter:
+                    logger.info(
+                        "[ANALYTICS] time_range=%r → %s", query_meta.time_range, time_filter
+                    )
+
+        combined_filter = {**mongo_filter, **time_filter}
+        coll_results: dict[str, Any] = {"filter": combined_filter}
 
         # --- COUNT ---
         if not ops or "count" in ops:
-            count = await repo.count(collection, mongo_filter or None)
+            count = await repo.count(collection, combined_filter or None)
             coll_results["count"] = count
-            logger.info("[ANALYTICS] %s count=%d filter=%s", collection, count, mongo_filter)
-            # Also compute unfiltered total when a filter was applied, so callers can
-            # show "X active out of Y total" instead of just the filtered number.
-            if mongo_filter:
+            logger.info("[ANALYTICS] %s count=%d filter=%s", collection, count, combined_filter)
+            if combined_filter:
                 total_count = await repo.count(collection, None)
                 coll_results["total_count"] = total_count
                 logger.info("[ANALYTICS] %s total_count=%d", collection, total_count)
 
-        # --- GROUP BY ---
+        # --- GROUP BY (with optional per-group metric aggregation) ---
+        # When numeric ops (avg/sum/max/min) are also requested alongside group_by,
+        # run a single combined $group pipeline that computes count AND metric values
+        # per group.  This prevents the double-division bug where a global average
+        # is incorrectly divided again by the number of distinct group values.
         if "group_by" in ops and query_meta.grouping:
             resolved_gb = _resolve_field(query_meta.grouping, all_fields)
             if resolved_gb:
-                # Group-by runs on full collection when no restrictive filter,
-                # or on filtered subset when a real filter was applied
-                counts = await _group_by_count(repo, collection, resolved_gb, mongo_filter)
-                coll_results["group_by"] = {"field": resolved_gb, "counts": counts}
-                logger.info(
-                    "[ANALYTICS] %s group_by=%s values=%d", collection, resolved_gb, len(counts)
-                )
+                numeric_ops_present = [o for o in ["avg", "sum", "max", "min"] if o in ops]
+                metric_field_ops: list[tuple[str, str]] = []
+                seen: set[tuple[str, str]] = set()
+                for op in numeric_ops_present:
+                    for metric in (query_meta.metrics or []):
+                        rf = _resolve_field(metric, all_fields)
+                        if rf and _is_numeric_field(rf) and (op, rf) not in seen:
+                            metric_field_ops.append((op, rf))
+                            seen.add((op, rf))
 
-        # --- NUMERIC AGGREGATIONS (avg / sum) ---
+                if metric_field_ops:
+                    # Combined aggregation: per-group count + metric values in one pipeline
+                    rows = await _group_by_metric(
+                        repo, collection, resolved_gb, metric_field_ops, combined_filter
+                    )
+                    if rows:
+                        coll_results["group_by_metrics"] = {
+                            "field": resolved_gb,
+                            "ops": [f"{op}_{rf}" for op, rf in metric_field_ops],
+                            "rows": rows,
+                        }
+                        logger.info(
+                            "[ANALYTICS] %s group_by_metrics field=%s rows=%d",
+                            collection, resolved_gb, len(rows),
+                        )
+                    else:
+                        # Fall back to plain count per group if combined agg returns nothing
+                        counts = await _group_by_count(repo, collection, resolved_gb, combined_filter)
+                        coll_results["group_by"] = {"field": resolved_gb, "counts": counts}
+                else:
+                    # No numeric metrics — pure count breakdown per group
+                    counts = await _group_by_count(repo, collection, resolved_gb, combined_filter)
+                    coll_results["group_by"] = {"field": resolved_gb, "counts": counts}
+                    logger.info(
+                        "[ANALYTICS] %s group_by=%s values=%d", collection, resolved_gb, len(counts)
+                    )
+
+        # --- GLOBAL NUMERIC AGGREGATIONS (avg / sum) ---
+        # Always compute global totals/averages as a supplementary overall figure,
+        # even when group_by_metrics is present (the global total is distinct from per-group).
         for op in ["avg", "sum"]:
             if op in ops:
                 for metric in (query_meta.metrics or []):
                     resolved_field = _resolve_field(metric, all_fields)
                     if resolved_field and _is_numeric_field(resolved_field):
                         val = await _numeric_agg(
-                            repo, collection, resolved_field, op, mongo_filter
+                            repo, collection, resolved_field, op, combined_filter
                         )
                         if val is not None:
                             coll_results[f"{op}_{resolved_field}"] = val
@@ -333,29 +441,33 @@ async def _run_analytics_inner(
                                 "[ANALYTICS] %s %s(%s)=%s", collection, op, resolved_field, val
                             )
 
-        # --- MAX / MIN — always run on FULL collection to find global extremes,
-        #     then also return the top-N actual records so the LLM can name them ---
+        # --- MAX / MIN ---
+        # top_n records are only fetched when no group_by is active: returning
+        # individual records alongside per-group results confuses the LLM into
+        # mixing document-level extremes with group-level summaries.
+        has_group_by = bool("group_by" in ops and query_meta.grouping)
         for op in ["max", "min"]:
             if op in ops:
                 for metric in (query_meta.metrics or []):
                     resolved_field = _resolve_field(metric, all_fields)
                     if resolved_field and _is_numeric_field(resolved_field):
-                        # Run on full collection (no filter) for global max/min
-                        global_val = await _numeric_agg(
-                            repo, collection, resolved_field, op, {}
+                        scoped_val = await _numeric_agg(
+                            repo, collection, resolved_field, op, combined_filter
                         )
-                        if global_val is not None:
-                            coll_results[f"{op}_{resolved_field}"] = global_val
+                        if scoped_val is not None:
+                            coll_results[f"{op}_{resolved_field}"] = scoped_val
                             logger.info(
-                                "[ANALYTICS] %s %s(%s)=%s (global)",
-                                collection, op, resolved_field, global_val,
+                                "[ANALYTICS] %s %s(%s)=%s filter=%s",
+                                collection, op, resolved_field, scoped_val, combined_filter,
                             )
-                        top_docs = await _top_n_by_field(
-                            repo, collection, resolved_field, op, {}, n=top_n
-                        )
-                        if top_docs:
-                            key = "top_records" if op == "max" else "bottom_records"
-                            coll_results[key] = top_docs
+                        # Only attach top_n records when no grouping is requested
+                        if not has_group_by:
+                            top_docs = await _top_n_by_field(
+                                repo, collection, resolved_field, op, combined_filter, n=top_n
+                            )
+                            if top_docs:
+                                key = "top_records" if op == "max" else "bottom_records"
+                                coll_results[key] = top_docs
 
         results[collection] = coll_results
 
