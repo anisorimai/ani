@@ -37,7 +37,7 @@ class StructuredResponse:
     confidence: float = 1.0
     latency_ms: int = 0
     followups: list[str] = field(default_factory=list)
-    citations: list[str] = field(default_factory=list)  # source filenames cited by LLM
+    citations: list[dict] = field(default_factory=list)  # source filenames cited by LLM
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -109,7 +109,7 @@ def compose(
     intent: str = "data_query",
     data: Optional[list[dict]] = None,
     followups: Optional[list[str]] = None,
-    citations: Optional[list[str]] = None,
+    citations: Optional[list[dict]] = None,
     metadata: Optional[dict] = None,
     success: bool = True,
 ) -> StructuredResponse:

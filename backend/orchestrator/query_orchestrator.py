@@ -597,7 +597,7 @@ class QueryOrchestrator:
             # Always attempt RAG before the fast path — the user may have uploaded
             # documents that answer this question directly.
             _fp_vector = await get_query_embedding(resolved_query) if user_id else None
-            rag_chunks_fp, source_filenames_fp = await self._fetch_rag_chunks(
+            rag_chunks_fp, source_filenames_fp, citation_map_fp = await self._fetch_rag_chunks(
                 resolved_query, _fp_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent
             )
             if rag_chunks_fp:
@@ -646,6 +646,7 @@ class QueryOrchestrator:
                 response_text, [], int(elapsed),
                 confidence=1.0, source=source, intent=intent,
                 followups=followups,
+                citations=self._extract_citations(citation_map_fp, source_filenames_fp) if rag_chunks_fp else [],
                 metadata={**timings, "intent": intent},
             )
 
@@ -717,7 +718,7 @@ class QueryOrchestrator:
             # Always check RAG before taking the fast path — the user may have
             # uploaded documents that answer this question directly.
             _fp_vector = await get_query_embedding(resolved_query) if user_id else None
-            rag_chunks_fp, source_filenames_fp = await self._fetch_rag_chunks(
+            rag_chunks_fp, source_filenames_fp, citation_map_fp = await self._fetch_rag_chunks(
                 resolved_query, _fp_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent
             )
             if rag_chunks_fp:
@@ -754,7 +755,7 @@ class QueryOrchestrator:
                 "confidence": 1.0,
                 "collections_used": [],
                 "routing": "fast_path_rag" if rag_chunks_fp else "fast_path",
-                "citations": self._extract_citations(response_text_fp, source_filenames_fp) if rag_chunks_fp else [],
+                "citations": self._extract_citations(citation_map_fp, source_filenames_fp) if rag_chunks_fp else [],
             }
             logger.info(
                 "[ORCHESTRATOR][STREAM] done intent=%s source=%s elapsed_ms=%.0f",
@@ -798,10 +799,10 @@ class QueryOrchestrator:
             if _cached:
                 analytics_results = _cached["analytics_results"]
                 sample_fetched = _cached["sample_fetched"]
-                rag_chunks, source_filenames = await rag_task
+                rag_chunks, source_filenames, citation_map = await rag_task
                 logger.info("[CACHE][STREAM] hit intent=%s key=%s", intent, _cache_key)
             else:
-                analytics_results, sample_fetched, (rag_chunks, source_filenames) = await asyncio.gather(
+                analytics_results, sample_fetched, (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                     run_analytics(query_meta, selected, self._metadata, self._repo, top_n=query_meta.top_n),
                     self._fetch_sample(resolved_query, selected, expanded_kw, query_vector, query_meta),
                     rag_task,
@@ -843,7 +844,7 @@ class QueryOrchestrator:
                     "confidence": _rag_conf if _rag_relevant else 0.0,
                     "collections_used": [],
                     "routing": "rag_fallback" if _rag_relevant else "no_data_fallback",
-                    "citations": self._extract_citations(_nd_text, source_filenames) if _rag_relevant else [],
+                    "citations": self._extract_citations(citation_map, source_filenames) if _rag_relevant else [],
                 }
                 return
 
@@ -897,14 +898,14 @@ class QueryOrchestrator:
             self._last_stream_meta[session_id] = {
                 "intent": intent, "source": "mongodb_aggregation", "confidence": 1.0,
                 "collections_used": selected, "routing": "analytics",
-                "citations": self._extract_citations(response_text, source_filenames),
+                "citations": self._extract_citations(citation_map, source_filenames),
             }
             return
 
         if intent == "data_query":
             # Paginated retrieval path
             t5 = time.perf_counter()
-            (fetched, total_records, total_pages), (rag_chunks, source_filenames) = await asyncio.gather(
+            (fetched, total_records, total_pages), (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                 self._fetch_paginated(
                     resolved_query, selected, expanded_kw, query_vector, page, DATA_QUERY_PAGE_SIZE,
                     query_meta=query_meta,
@@ -971,7 +972,7 @@ class QueryOrchestrator:
                 "confidence": 1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
                 "collections_used": collections_used,
                 "routing": f"data_query_{ctx_source}",
-                "citations": self._extract_citations(response_text, source_filenames),
+                "citations": self._extract_citations(citation_map, source_filenames),
                 "pagination": {
                     "total_records": 0 if ctx_source == "rag_only" else total_records,
                     "page": page,
@@ -990,10 +991,10 @@ class QueryOrchestrator:
             if _cached:
                 fetched = _cached["sample_fetched"]
                 stream_summary_agg = _cached["analytics_results"]
-                rag_chunks, source_filenames = await rag_task
+                rag_chunks, source_filenames, citation_map = await rag_task
                 logger.info("[CACHE][STREAM] hit intent=summary key=%s", _cache_key)
             else:
-                fetched, stream_summary_agg, (rag_chunks, source_filenames) = await asyncio.gather(
+                fetched, stream_summary_agg, (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                     self._fetch_sample(resolved_query, selected, expanded_kw, query_vector, query_meta),
                     run_analytics(query_meta, selected, self._metadata, self._repo, top_n=query_meta.top_n),
                     rag_task,
@@ -1004,10 +1005,10 @@ class QueryOrchestrator:
             stream_summary_agg = {}
             if _cached:
                 fetched = _cached["sample_fetched"]
-                rag_chunks, source_filenames = await rag_task
+                rag_chunks, source_filenames, citation_map = await rag_task
                 logger.info("[CACHE][STREAM] hit intent=%s key=%s", intent, _cache_key)
             else:
-                fetched, (rag_chunks, source_filenames) = await asyncio.gather(
+                fetched, (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                     self._fetch_sample(resolved_query, selected, expanded_kw, query_vector, query_meta),
                     rag_task,
                 )
@@ -1080,7 +1081,7 @@ class QueryOrchestrator:
             "confidence": 1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
             "collections_used": collections_used,
             "routing": f"sample_{ctx_source}",
-            "citations": self._extract_citations(response_text, source_filenames),
+            "citations": self._extract_citations(citation_map, source_filenames),
         }
 
     # -- DB pipeline (non-streaming) -------------------------------------------
@@ -1130,10 +1131,10 @@ class QueryOrchestrator:
             if _cached:
                 analytics_results = _cached["analytics_results"]
                 sample_fetched = _cached["sample_fetched"]
-                rag_chunks, source_filenames = await self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
+                rag_chunks, source_filenames, citation_map = await self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
                 logger.info("[CACHE] hit intent=%s key=%s", intent, _cache_key)
             else:
-                analytics_results, sample_fetched, (rag_chunks, source_filenames) = await asyncio.gather(
+                analytics_results, sample_fetched, (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                     run_analytics(query_meta, selected, self._metadata, self._repo, top_n=query_meta.top_n),
                     self._fetch_sample(query, selected, expanded_kw, query_vector, query_meta),
                     self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent),
@@ -1171,7 +1172,9 @@ class QueryOrchestrator:
                 return compose(
                     response_text, selected, int(_ms(pipeline_start)),
                     confidence=_rag_conf if _rag_relevant else 0.0, source=_nd_source, intent=intent,
-                    success=_rag_relevant, metadata={**timings, "no_data": not _rag_relevant},
+                    success=_rag_relevant,
+                    citations=self._extract_citations(citation_map, source_filenames) if _rag_relevant else [],
+                    metadata={**timings, "no_data": not _rag_relevant},
                 )
 
             # Short-circuit: simple filtered-count query → answer directly, skip LLM.
@@ -1218,14 +1221,14 @@ class QueryOrchestrator:
             return compose(
                 response_text, selected, int(_ms(pipeline_start)),
                 confidence=1.0, source="mongodb_aggregation", intent=intent,
-                citations=self._extract_citations(response_text, source_filenames),
+                citations=self._extract_citations(citation_map, source_filenames),
                 metadata={**timings, "query_meta": query_meta.to_dict()},
             )
 
         # ── PATH B: Data Query — paginated document fetch ─────────────────────
         if intent == "data_query":
             t5 = time.perf_counter()
-            (fetched, total_records, total_pages), (rag_chunks, source_filenames) = await asyncio.gather(
+            (fetched, total_records, total_pages), (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                 self._fetch_paginated(
                     query, selected, expanded_kw, query_vector, page, DATA_QUERY_PAGE_SIZE,
                     query_meta=query_meta,
@@ -1283,7 +1286,7 @@ class QueryOrchestrator:
                 confidence=1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
                 source="rag_document" if ctx_source == "rag_only" else validation.source,
                 intent=intent,
-                citations=self._extract_citations(response_text, source_filenames),
+                citations=self._extract_citations(citation_map, source_filenames),
                 metadata={**timings, "query_meta": query_meta.to_dict()},
             )
             result.metadata["pagination"] = {
@@ -1303,10 +1306,10 @@ class QueryOrchestrator:
             if _cached:
                 fetched = _cached["sample_fetched"]
                 summary_agg = _cached["analytics_results"]
-                rag_chunks, source_filenames = await self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
+                rag_chunks, source_filenames, citation_map = await self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
                 logger.info("[CACHE] hit intent=summary key=%s", _cache_key)
             else:
-                fetched, summary_agg, (rag_chunks, source_filenames) = await asyncio.gather(
+                fetched, summary_agg, (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                     self._fetch_sample(query, selected, expanded_kw, query_vector, query_meta),
                     run_analytics(query_meta, selected, self._metadata, self._repo, top_n=query_meta.top_n),
                     self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent),
@@ -1317,10 +1320,10 @@ class QueryOrchestrator:
             summary_agg = {}
             if _cached:
                 fetched = _cached["sample_fetched"]
-                rag_chunks, source_filenames = await self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
+                rag_chunks, source_filenames, citation_map = await self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
                 logger.info("[CACHE] hit intent=%s key=%s", intent, _cache_key)
             else:
-                fetched, (rag_chunks, source_filenames) = await asyncio.gather(
+                fetched, (rag_chunks, source_filenames, citation_map) = await asyncio.gather(
                     self._fetch_sample(query, selected, expanded_kw, query_vector, query_meta),
                     self._fetch_rag_chunks(query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent),
                 )
@@ -1390,7 +1393,7 @@ class QueryOrchestrator:
             source="rag_document" if ctx_source == "rag_only" else validation.source,
             intent=intent,
             data=raw_data[:20],
-            citations=self._extract_citations(response_text, source_filenames),
+            citations=self._extract_citations(citation_map, source_filenames),
             metadata={**timings, "query_meta": query_meta.to_dict(), "validation_reason": validation.reason},
         )
 
@@ -1779,15 +1782,15 @@ class QueryOrchestrator:
         top_k: int,
         org_id: str = "",
         intent: Optional[str] = None,
-    ) -> tuple[list[dict], list[str]]:
+    ) -> tuple[list[dict], list[str], dict[str, dict]]:
         """
         Stage 5b — retrieve relevant document chunks from rag_chunks collection.
-        Returns (chunks, source_filenames).  Never raises; failures return ([], []).
+        Returns (chunks, source_filenames, citation_map).  Never raises; failures return ([], [], {}).
         """
         db = get_db()
         if db is None:
             logger.warning("[RAG] database unavailable — skipping RAG retrieval")
-            return [], []
+            return [], [], {}
         logger.info(
             "[RAG] fetching chunks: user=%s org=%s intent=%s vector=%s query=%r",
             (user_id[:8] + "...") if user_id else "none", org_id or "none", intent or "none",
@@ -1796,30 +1799,32 @@ class QueryOrchestrator:
         )
         try:
             from rag.retriever import retrieve_chunks
-            chunks, filenames = await retrieve_chunks(
+            chunks, filenames, citation_map = await retrieve_chunks(
                 db, query_vector, query, user_id, top_k, org_id=org_id or None, intent=intent
             )
             logger.info(
                 "[RAG] retrieved %d chunks from %d file(s): %s",
                 len(chunks), len(filenames), filenames,
             )
-            return chunks, filenames
+            return chunks, filenames, citation_map
         except Exception as exc:
             logger.warning("[RAG] retrieval failed (non-fatal): %s", exc)
-            return [], []
+            return [], [], {}
 
     @staticmethod
-    def _extract_citations(response_text: str, allowed_filenames: list[str]) -> list[str]:
+    def _extract_citations(citation_map: dict[str, dict], allowed_filenames: list[str]) -> list[dict]:
         """
-        Scan the completed response for any filename from the allowed list.
-        Case-insensitive membership check — no regex, no format assumptions.
-        Only filenames explicitly passed by the retriever can appear as citations,
-        preventing hallucinated references.
+        Build the list of structured citation dictionaries in the exact order of retrieval,
+        using the allowed filenames as the source of truth and mapping them via citation_map.
         """
-        if not allowed_filenames:
+        if not allowed_filenames or not citation_map:
             return []
-        text_lower = response_text.lower()
-        return [f for f in allowed_filenames if f.lower() in text_lower]
+        citations = []
+        for f in allowed_filenames:
+            cit = citation_map.get(f.lower())
+            if cit:
+                citations.append(cit)
+        return citations
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

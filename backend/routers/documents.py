@@ -428,7 +428,7 @@ async def debug_rag(query: str = "", current_user: dict = Depends(get_current_us
         from orchestrator.semantic_expander import get_query_embedding
         from rag.retriever import retrieve_chunks
         query_vector = await get_query_embedding(query) if os.getenv("EMBEDDING_MODEL") else None
-        chunks, filenames = await retrieve_chunks(db, query_vector, query, "", top_k=5)
+        chunks, filenames, _ = await retrieve_chunks(db, query_vector, query, "", top_k=5)
         result["test_query"] = query
         result["test_retrieval"] = {
             "chunks_found": len(chunks),
@@ -470,7 +470,7 @@ async def query_plant_knowledge(body: QueryRequest, current_user: dict = Depends
     from rag.retriever import retrieve_chunks
 
     query_vector = await get_query_embedding(body.question) if EMBEDDING_MODEL else None
-    chunks, filenames = await retrieve_chunks(
+    chunks, filenames, _ = await retrieve_chunks(
         db,
         query_vector,
         body.question,

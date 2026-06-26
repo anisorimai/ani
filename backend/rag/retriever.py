@@ -170,7 +170,7 @@ async def retrieve_all_user_chunks(
     db: motor.motor_asyncio.AsyncIOMotorDatabase,
     user_id: str,
     org_id: Optional[str] = None,
-) -> tuple[list[dict], list[str]]:
+) -> tuple[list[dict], list[str], dict[str, dict]]:
     """
     Fetch every indexed chunk visible to this user (personal + org) without
     score-based filtering.
@@ -183,20 +183,37 @@ async def retrieve_all_user_chunks(
     try:
         cursor = db[RAG_CHUNKS_COLLECTION].find(
             _scope_filter(user_id, org_id),
-            {"_id": 0, "doc_id": 1, "filename": 1, "chunk_index": 1, "text": 1},
+            {"_id": 0, "doc_id": 1, "filename": 1, "chunk_index": 1, "text": 1, "scope": 1, "equipment": 1, "metadata": 1},
         )
         chunks = await cursor.to_list(length=500)
         for chunk in chunks:
             chunk["score"] = 1.0
         filenames = list(dict.fromkeys(c["filename"].lower() for c in chunks))
+
+        citation_map = {}
+        for c in chunks:
+            metadata = c.get("metadata") or {}
+            fn = c.get("filename") or metadata.get("source_file") or ""
+            if not fn:
+                continue
+            fn_lower = fn.lower()
+            if fn_lower not in citation_map:
+                citation_map[fn_lower] = {
+                    "filename": fn,
+                    "equipment": metadata.get("equipment") or c.get("equipment") or "General",
+                    "source_url": metadata.get("source_url") or "",
+                    "document_type": metadata.get("document_type") or "manual",
+                    "dashboard_scope": metadata.get("dashboard_scope") or "enterprise"
+                }
+
         logger.info(
             "[RAG RETRIEVER] retrieve_all_user_chunks: %d chunks across %d file(s) for user=%s org=%s",
             len(chunks), len(filenames), user_id[:8] + "...", org_id or "none",
         )
-        return chunks, filenames
+        return chunks, filenames, citation_map
     except Exception as exc:
         logger.warning("[RAG RETRIEVER] retrieve_all_user_chunks failed: %s", exc)
-        return [], []
+        return [], [], {}
 
 
 async def _retrieve_candidates(
@@ -304,12 +321,13 @@ async def retrieve_chunks(
     org_id: Optional[str] = None,
     intent: Optional[str] = None,
     dashboard_scope: str = "enterprise",
-) -> tuple[list[dict], list[str]]:
+) -> tuple[list[dict], list[str], dict[str, dict]]:
     """
-    Return (chunks, source_filenames).
+    Return (chunks, source_filenames, citation_map).
 
     chunks          : top-k dicts with keys {text, filename, chunk_index, score, doc_id, equipment}
     source_filenames: deduplicated list of filenames that contributed chunks.
+    citation_map    : dict mapping lowercase filename to its document metadata dict.
 
     Retrieves chunks with intelligent equipment-aware routing and boosting.
     Scope boosts are applied after retrieval — all plant chunks remain candidates,
@@ -412,14 +430,31 @@ async def retrieve_chunks(
             )
 
     if not candidates:
-        return [], []
+        return [], [], {}
 
     candidates = _proximity_dedup(candidates)
     candidates = apply_scope_boost(candidates, dashboard_scope)
     selected   = _mmr_rerank(candidates, top_k)
 
     filenames = list(dict.fromkeys(c["filename"].lower() for c in selected))
-    return selected, filenames
+
+    citation_map = {}
+    for c in selected:
+        metadata = c.get("metadata") or {}
+        fn = c.get("filename") or metadata.get("source_file") or ""
+        if not fn:
+            continue
+        fn_lower = fn.lower()
+        if fn_lower not in citation_map:
+            citation_map[fn_lower] = {
+                "filename": fn,
+                "equipment": metadata.get("equipment") or c.get("equipment") or "General",
+                "source_url": metadata.get("source_url") or "",
+                "document_type": metadata.get("document_type") or "manual",
+                "dashboard_scope": metadata.get("dashboard_scope") or "enterprise"
+            }
+
+    return selected, filenames, citation_map
 
 
 # ── Search paths ──────────────────────────────────────────────────────────────
