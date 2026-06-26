@@ -592,4 +592,6 @@ export default function DocumentUpload({ isOpen, onClose }) {
           </p>
         </div>
       </div>
-    
+    </div>
+  );
+}
