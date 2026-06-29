@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { HiMicrophone, HiStop } from 'react-icons/hi';
-import AudioWaveform, { AudioGlow } from './AudioVisualizer';
+import AudioWaveform, { AudioSignal, AudioLine, AudioGlow } from './AudioVisualizer';
 import useVoiceStore from '../store/useVoiceStore';
 
 /**
@@ -85,7 +85,7 @@ export default function VoiceButton({ onRecordComplete, disabled = false }) {
       {isRecording && (
         <div className="flex items-center gap-3 animate-fade-in flex-1 min-w-0">
           <div ref={waveContainerRef} className="flex-1 min-w-0">
-            <AudioWaveform width={waveWidth} height={24} />
+            <AudioSignal width={waveWidth} height={24} />
           </div>
           <span
             className="text-[0.8125rem] font-bold tabular-nums whitespace-nowrap tracking-wide flex-shrink-0"

@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -255,8 +255,8 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
       {/* Avatar — smaller on mobile */}
       {isUser ? (
         <UserAvatar
-          className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[0.65rem] sm:text-xs font-bold mt-0.5 overflow-hidden shadow-lg"
-          style={{ background: 'linear-gradient(135deg, #1A3B8A 0%, #1D6CB8 100%)', color: '#fff' }}
+          className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[0.65rem] sm:text-xs font-bold mt-0.5 overflow-hidden shadow-[0_4px_10px_rgba(79,70,229,0.3)] ring-2 ring-[var(--surf)]"
+          style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', color: '#fff' }}
         />
       ) : (
         <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-[var(--surf)] border mt-0.5" style={{ borderColor: 'rgba(29,108,184,0.30)' }}>

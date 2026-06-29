@@ -37,8 +37,19 @@ class StructuredResponse:
     confidence: float = 1.0
     latency_ms: int = 0
     followups: list[str] = field(default_factory=list)
-    citations: list[str] = field(default_factory=list)  # source filenames cited by LLM
+    citations: list[dict] = field(default_factory=list)  # source filenames cited by LLM
     metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        from rag.retriever import query_understanding_var
+        try:
+            val = query_understanding_var.get()
+            if val and "query_understanding" not in self.metadata:
+                # Merge into a copy to avoid modifying a default dict or shared state
+                self.metadata = dict(self.metadata)
+                self.metadata["query_understanding"] = val
+        except Exception:
+            pass
 
     def to_dict(self) -> dict:
         return {
@@ -98,7 +109,7 @@ def compose(
     intent: str = "data_query",
     data: Optional[list[dict]] = None,
     followups: Optional[list[str]] = None,
-    citations: Optional[list[str]] = None,
+    citations: Optional[list[dict]] = None,
     metadata: Optional[dict] = None,
     success: bool = True,
 ) -> StructuredResponse:

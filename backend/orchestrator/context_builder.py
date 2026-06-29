@@ -260,7 +260,11 @@ def build_rag_context(chunks: list[dict], max_chars: int = 8_000) -> str:
         if not text:
             continue
 
-        header  = f"[DOCUMENT: {filename} — chunk {chunk_index}]"
+        equipment = chunk.get("equipment")
+        if equipment and equipment != "General":
+            header  = f"[DOCUMENT: {filename} — Equipment: {equipment} — chunk {chunk_index}]"
+        else:
+            header  = f"[DOCUMENT: {filename} — chunk {chunk_index}]"
         section = f"{header}\n{text}"
 
         if total_chars + len(section) > max_chars:

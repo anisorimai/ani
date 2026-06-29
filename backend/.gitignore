@@ -1,11 +1,24 @@
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 .venv/
 venv/
-.env
 *.db
 *.duckdb
 *.duckdb.wal
 logs/
 *.log
+
+# Environment files
+.env
+.env.*
+
+# Virtual environment
+venv/
+env/
+
+# OS files
+.DS_Store
+Thumbs.db
+

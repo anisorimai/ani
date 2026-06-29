@@ -6,24 +6,22 @@ import useVoiceStore from '../store/useVoiceStore';
  * Always shows an animated idle wave when recording, reacts to mic volume.
  * Uses canvas for smooth 60fps rendering.
  */
-export default function AudioWaveform({ width = 200, height = 40 }) {
-  const canvasRef = useRef(null);
-  const animRef   = useRef(null);
+export default function AudioWaveform({ width = 220, height = 44 }) {
+  const canvasRef   = useRef(null);
+  const animRef     = useRef(null);
   const isRecording = useVoiceStore((s) => s.isRecording);
   const volume      = useVoiceStore((s) => s.volume);
   const volumeRef   = useRef(0);
   const smoothRef   = useRef(0);
-  const barsRef     = useRef(Array(24).fill(0));
 
-  /* Keep volumeRef in sync with the store value each frame */
-  useEffect(() => {
-    volumeRef.current = volume;
-  }, [volume]);
+  const BAR_COUNT = 54;
+  const barsRef   = useRef(new Float32Array(BAR_COUNT));
+
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
 
   useEffect(() => {
     if (!isRecording) return;
 
-    /* Wait one microtask so the canvas is in the DOM */
     const raf = requestAnimationFrame(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -34,48 +32,58 @@ export default function AudioWaveform({ width = 200, height = 40 }) {
       canvas.height = height * dpr;
       ctx.scale(dpr, dpr);
 
-      const BAR_COUNT = 24;
-      const GAP       = 3;
-      const barWidth  = (width - (BAR_COUNT - 1) * GAP) / BAR_COUNT;
-      const centerY   = height / 2;
-      const MIN_H     = height * 0.18; // always at least 18% of canvas height
+      const GAP      = 2.5;
+      const barW     = (width - (BAR_COUNT - 1) * GAP) / BAR_COUNT;
+      const centerY  = height / 2;
+      const MIN_HALF = 1.5;
+      const MAX_HALF = centerY - 1;
 
       const draw = () => {
         ctx.clearRect(0, 0, width, height);
 
-        /* Smooth volume towards current value */
-        smoothRef.current += (volumeRef.current - smoothRef.current) * 0.2;
-        const vol = smoothRef.current;
+        smoothRef.current += (volumeRef.current - smoothRef.current) * 0.15;
+        const vol = Math.min(1, smoothRef.current);
+        const t   = Date.now() * 0.001;
 
-        /* Add a sine-based idle wave so bars are always visible */
-        const bars = barsRef.current;
-        const t    = Date.now() * 0.004;
+        /* Layered sine waves — high-frequency mix for a realistic jagged waveform */
         for (let i = 0; i < BAR_COUNT; i++) {
-          const idle   = MIN_H * (0.5 + 0.5 * Math.sin(t + i * 0.55));
-          const active = vol * (0.35 + 0.65 * Math.abs(Math.sin(t * 1.3 + i * 0.6))) * height * 0.88;
-          const target = Math.max(idle, active);
-          bars[i] += (target - bars[i]) * 0.25;
+          const n  = i / (BAR_COUNT - 1);
+          const w1 = Math.sin(n * Math.PI * 7  + t * 2.4) * 0.38;
+          const w2 = Math.sin(n * Math.PI * 3  - t * 1.6) * 0.28;
+          const w3 = Math.sin(n * Math.PI * 11 + t * 3.5) * 0.18;
+          const w4 = Math.sin(n * Math.PI * 5  - t * 0.9) * 0.16;
+          const combined = Math.abs(w1 + w2 + w3 + w4);   // always positive → symmetric bars
+
+          const idleHalf  = MIN_HALF + MAX_HALF * 0.30 * combined;
+          const activeHalf = MIN_HALF + MAX_HALF * Math.min(1, vol * 2.2) * combined;
+          const target = Math.max(idleHalf, activeHalf);
+
+          barsRef.current[i] += (target - barsRef.current[i]) * 0.22;
         }
 
-        /* Draw bars: royal blue → sky blue gradient (matches logo) */
+        /* Glow shadow */
+        ctx.shadowBlur  = 8;
+        ctx.shadowColor = 'rgba(45, 212, 191, 0.55)';
+
         for (let i = 0; i < BAR_COUNT; i++) {
-          const x    = i * (barWidth + GAP);
-          const barH = bars[i];
-          const frac = i / BAR_COUNT;
+          const x     = i * (barW + GAP);
+          const halfH = Math.max(MIN_HALF, barsRef.current[i]);
 
-          /* Interpolate: #1D6CB8 (29,108,184) → #4DBADF (77,186,223) */
-          const r = Math.round(29  + (77  - 29)  * frac);
-          const g = Math.round(108 + (186 - 108) * frac);
-          const b = Math.round(184 + (223 - 184) * frac);
-          /* Alpha: minimum 0.80 so bars are always clearly visible */
-          const alpha = Math.min(1, 0.80 + vol * 0.20);
+          /* Vertical gradient: bright teal tips → slightly dimmer at center */
+          const grad = ctx.createLinearGradient(0, centerY - halfH, 0, centerY + halfH);
+          grad.addColorStop(0,    'rgba(56, 232, 202, 1.00)');   // top tip
+          grad.addColorStop(0.35, 'rgba(14, 165, 233, 0.85)');   // upper mid
+          grad.addColorStop(0.50, 'rgba(14, 165, 233, 0.55)');   // center
+          grad.addColorStop(0.65, 'rgba(14, 165, 233, 0.85)');   // lower mid
+          grad.addColorStop(1,    'rgba(56, 232, 202, 1.00)');   // bottom tip
 
-          ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+          ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.roundRect(x, centerY - barH / 2, barWidth, barH, barWidth / 2);
+          ctx.roundRect(x, centerY - halfH, barW, halfH * 2, barW / 2);
           ctx.fill();
         }
 
+        ctx.shadowBlur = 0;
         animRef.current = requestAnimationFrame(draw);
       };
 
@@ -86,23 +94,205 @@ export default function AudioWaveform({ width = 200, height = 40 }) {
       cancelAnimationFrame(raf);
       if (animRef.current) cancelAnimationFrame(animRef.current);
       animRef.current = null;
-      /* Reset bars for next session */
-      barsRef.current = Array(24).fill(0);
+      barsRef.current.fill(0);
       smoothRef.current = 0;
     };
   }, [isRecording, width, height]);
 
-  /* Always render the canvas so canvasRef is populated before the effect */
   return (
     <canvas
       ref={canvasRef}
       className="block flex-shrink-0"
-      style={{
-        width,
-        height,
-        opacity: isRecording ? 1 : 0,
-        transition: 'opacity 0.2s ease',
-      }}
+      style={{ width, height, opacity: isRecording ? 1 : 0, transition: 'opacity 0.25s ease' }}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
+ * Audio-file-style signal waveform — many thin bars, speech-burst envelope,
+ * soft light-blue coloring, symmetric about centre.
+ */
+export function AudioSignal({ width = 220, height = 44 }) {
+  const canvasRef   = useRef(null);
+  const animRef     = useRef(null);
+  const isRecording = useVoiceStore((s) => s.isRecording);
+  const volume      = useVoiceStore((s) => s.volume);
+  const volumeRef   = useRef(0);
+  const smoothRef   = useRef(0);
+
+  const BAR_COUNT = 180;
+  const barsRef   = useRef(new Float32Array(BAR_COUNT));
+
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const raf = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = width  * dpr;
+      canvas.height = height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const GAP      = 0.8;
+      const barW     = (width - (BAR_COUNT - 1) * GAP) / BAR_COUNT;
+      const centerY  = height / 2;
+      const MIN_HALF = 1;
+      const MAX_HALF = centerY - 1;
+
+      const draw = () => {
+        ctx.clearRect(0, 0, width, height);
+
+        smoothRef.current += (volumeRef.current - smoothRef.current) * 0.12;
+        const vol = Math.min(1, smoothRef.current);
+        const t   = Date.now() * 0.001;
+
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const n = i / (BAR_COUNT - 1);
+
+          // Three-layer speech envelope: word bursts → syllables → fine grain
+          const env1 = 0.5 + 0.5 * Math.sin(n * Math.PI * 3.5 + t * 0.9);
+          const env2 = 0.5 + 0.5 * Math.sin(n * Math.PI * 8   - t * 1.8);
+          const env3 = 0.4 + 0.6 * Math.abs(Math.sin(n * Math.PI * 18 + t * 3.2));
+          const envelope = env1 * 0.45 + env2 * 0.30 + env3 * 0.25;
+
+          const idleHalf  = MIN_HALF + MAX_HALF * 0.22 * envelope;
+          const activeHalf = MIN_HALF + MAX_HALF * Math.min(1, vol * 1.8) * envelope;
+          const target = idleHalf + (activeHalf - idleHalf) * Math.min(1, vol * 2);
+
+          barsRef.current[i] += (target - barsRef.current[i]) * 0.18;
+        }
+
+        ctx.shadowBlur  = 5;
+        ctx.shadowColor = 'rgba(96, 165, 250, 0.45)';
+
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const x     = i * (barW + GAP);
+          const halfH = Math.max(MIN_HALF, barsRef.current[i]);
+
+          ctx.fillStyle = 'rgba(147, 197, 253, 0.82)'; // blue-300
+          ctx.beginPath();
+          ctx.roundRect(x, centerY - halfH, barW, halfH * 2, Math.min(barW / 2, 1.2));
+          ctx.fill();
+        }
+
+        ctx.shadowBlur = 0;
+        animRef.current = requestAnimationFrame(draw);
+      };
+
+      draw();
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      animRef.current  = null;
+      barsRef.current.fill(0);
+      smoothRef.current = 0;
+    };
+  }, [isRecording, width, height]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="block flex-shrink-0"
+      style={{ width, height, opacity: isRecording ? 1 : 0, transition: 'opacity 0.25s ease' }}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
+ * Oscilloscope-style continuous line waveform.
+ * Draws a single smooth curve that reacts to mic volume.
+ */
+export function AudioLine({ width = 220, height = 44 }) {
+  const canvasRef   = useRef(null);
+  const animRef     = useRef(null);
+  const isRecording = useVoiceStore((s) => s.isRecording);
+  const volume      = useVoiceStore((s) => s.volume);
+  const volumeRef   = useRef(0);
+  const smoothRef   = useRef(0);
+
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const raf = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = width  * dpr;
+      canvas.height = height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const centerY = height / 2;
+
+      const draw = () => {
+        ctx.clearRect(0, 0, width, height);
+
+        smoothRef.current += (volumeRef.current - smoothRef.current) * 0.12;
+        const vol = Math.min(1, smoothRef.current);
+        const t   = Date.now() * 0.001;
+
+        // Idle amplitude always visible; grows with voice volume
+        const amp = centerY * (0.28 + vol * 0.68);
+
+        // Multiple overlapping waves for a natural speech waveform shape
+        const STEPS = width * 2;
+        ctx.beginPath();
+        for (let s = 0; s <= STEPS; s++) {
+          const n = s / STEPS;
+          const x = n * width;
+          const w1 = Math.sin(n * Math.PI * 22 + t * 4.2) * 0.42;
+          const w2 = Math.sin(n * Math.PI * 14 - t * 2.8) * 0.30;
+          const w3 = Math.sin(n * Math.PI * 36 + t * 6.1) * 0.16;
+          const w4 = Math.sin(n * Math.PI *  8 - t * 1.4) * 0.12;
+          const y  = centerY + amp * (w1 + w2 + w3 + w4);
+          s === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+
+        // Gradient stroke left → right: blue to teal
+        const grad = ctx.createLinearGradient(0, 0, width, 0);
+        grad.addColorStop(0,    '#3b82f6');
+        grad.addColorStop(0.5,  '#06b6d4');
+        grad.addColorStop(1,    '#2dd4bf');
+
+        ctx.strokeStyle = grad;
+        ctx.lineWidth   = 1.8;
+        ctx.lineJoin    = 'round';
+        ctx.shadowBlur  = 6;
+        ctx.shadowColor = 'rgba(6, 182, 212, 0.5)';
+        ctx.stroke();
+        ctx.shadowBlur  = 0;
+
+        animRef.current = requestAnimationFrame(draw);
+      };
+
+      draw();
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      animRef.current  = null;
+      smoothRef.current = 0;
+    };
+  }, [isRecording, width, height]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="block flex-shrink-0"
+      style={{ width, height, opacity: isRecording ? 1 : 0, transition: 'opacity 0.25s ease' }}
       aria-hidden="true"
     />
   );

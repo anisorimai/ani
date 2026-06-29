@@ -15,8 +15,14 @@ export default function Dashboard() {
   const loadTheme     = useThemeStore((s) => s.loadTheme);
   const loadFromCache = useChatStore((s) => s.loadFromCache);
 
-  const [view, setView] = useState('overview'); // 'overview' | 'chat'
+  const [view, setView] = useState(() => {
+    return localStorage.getItem('dashboard-view') || 'overview';
+  });
   const scrollContainerRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('dashboard-view', view);
+  }, [view]);
 
   useEffect(() => {
     loadTheme();

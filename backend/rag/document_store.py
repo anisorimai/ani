@@ -33,25 +33,21 @@ RAG_CHUNKS_COLLECTION = "rag_chunks"
 
 async def init_rag_indexes(db: motor.motor_asyncio.AsyncIOMotorDatabase) -> None:
     """
-    Create mandatory indexes on rag_chunks at startup.
+    Create mandatory indexes on rag_chunks and rag_documents at startup.
     These are regular MongoDB indexes (not Atlas vector indexes) — no manual
     Atlas configuration required.
 
     Without {doc_id: 1}, every file deletion scans the full rag_chunks collection.
     Without {user_id: 1, doc_id: 1}, Atlas $vectorSearch filter has no supporting index.
     Without {org_id: 1, scope: 1}, org-scoped retrieval scans the full collection.
-
-    # TODO: Add before production load:
-    #   await db[RAG_DOCUMENTS_COLLECTION].create_index([("user_id", 1)])
-    #   await db[RAG_DOCUMENTS_COLLECTION].create_index(
-    #       [("user_id", 1), ("filename", 1)], unique=True
-    #   )
-    # The unique index also prevents duplicate rag_documents records on concurrent
-    # uploads of the same file by the same user.
     """
     await db[RAG_CHUNKS_COLLECTION].create_index([("doc_id", 1)])
     await db[RAG_CHUNKS_COLLECTION].create_index([("user_id", 1), ("doc_id", 1)])
     await db[RAG_CHUNKS_COLLECTION].create_index([("org_id", 1), ("scope", 1)])
+    await db[RAG_CHUNKS_COLLECTION].create_index([("equipment", 1)])
+    await db[RAG_DOCUMENTS_COLLECTION].create_index([("doc_id", 1)], unique=True)
+    await db[RAG_DOCUMENTS_COLLECTION].create_index([("equipment", 1)])
+    await db[RAG_DOCUMENTS_COLLECTION].create_index([("equipment", 1), ("filename", 1)], unique=True)
     logger.info("RAG collection indexes initialized")
 
 
@@ -62,13 +58,12 @@ def compute_file_hash(file_bytes: bytes) -> str:
     return hashlib.sha256(file_bytes).hexdigest()
 
 
-def make_doc_id(user_id: str, filename: str) -> str:
+def make_doc_id(equipment: str, filename: str) -> str:
     """
-    Stable identity-based ID: sha256(user_id:filename)[:16].
-    Same user + same filename → same doc_id on every re-upload.
-    Different users uploading the same filename → different doc_ids (user-scoped).
+    Stable identity-based ID: sha256(equipment:filename)[:16].
+    Same equipment + same filename → same doc_id on every re-upload.
     """
-    return hashlib.sha256(f"{user_id}:{filename}".encode()).hexdigest()[:16]
+    return hashlib.sha256(f"{equipment}:{filename}".encode()).hexdigest()[:16]
 
 
 def make_org_doc_id(org_id: str, filename: str) -> str:
@@ -77,6 +72,27 @@ def make_org_doc_id(org_id: str, filename: str) -> str:
     Same org + same filename → same doc_id regardless of which admin uploaded it.
     """
     return hashlib.sha256(f"org:{org_id}:{filename}".encode()).hexdigest()[:16]
+
+
+# ── Helper for keys ──────────────────────────────────────────────────────────
+
+def parse_equipment_and_filename_from_key(key: str) -> tuple[str, str]:
+    """
+    Parse equipment name and filename from a storage key.
+    Expected format: equipment/{equipment_name}/{filename}
+    """
+    path_str = key.replace("\\", "/")
+    parts = [p for p in path_str.split("/") if p]
+    if len(parts) >= 3 and parts[0] == "equipment":
+        equipment = parts[1]
+        filename = "/".join(parts[2:])
+    elif len(parts) >= 2 and parts[0] != "equipment":
+        equipment = parts[0]
+        filename = "/".join(parts[1:])
+    else:
+        equipment = "General"
+        filename = parts[-1] if parts else "document.pdf"
+    return equipment, filename
 
 
 # ── rag_documents CRUD ────────────────────────────────────────────────────────
@@ -92,7 +108,7 @@ async def upsert_document_record(
     db: motor.motor_asyncio.AsyncIOMotorDatabase,
     *,
     doc_id: str,
-    user_id: str,
+    user_id: str = "",
     filename: str,
     file_hash: str,
     file_size_bytes: int,
@@ -106,6 +122,10 @@ async def upsert_document_record(
     metadata: Optional[dict] = None,
     scope: str = "user",
     org_id: Optional[str] = None,
+    equipment: str = "General",
+    dashboard_scope: str = "enterprise",
+    document_type: str = "manual",
+    source_url: Optional[str] = None,
 ) -> None:
     """
     Full upsert — $set overwrites ALL mutable fields so no stale values survive
@@ -113,12 +133,20 @@ async def upsert_document_record(
     created_at is $setOnInsert only so it is never overwritten.
     """
     now = datetime.now(timezone.utc)
+    metadata_payload = dict(metadata or {})
+    metadata_payload.update({
+        "dashboard_scope": dashboard_scope,
+        "document_type": document_type,
+        "source_url": source_url,
+    })
+
     await db[RAG_DOCUMENTS_COLLECTION].update_one(
         {"doc_id": doc_id},
         {
             "$set": {
                 "doc_id": doc_id,
                 "user_id": user_id,
+                "equipment": equipment,
                 "filename": filename,
                 "file_hash": file_hash,
                 "file_size_bytes": file_size_bytes,
@@ -129,9 +157,12 @@ async def upsert_document_record(
                 "error_message": error_message,
                 "indexed_at": indexed_at,
                 "partial_index": partial_index,
-                "metadata": metadata or {},
+                "metadata": metadata_payload,
                 "scope": scope,
                 "org_id": org_id,
+                "dashboard_scope": dashboard_scope,
+                "document_type": document_type,
+                "source_url": source_url,
                 "updated_at": now,
             },
             "$setOnInsert": {"created_at": now},
@@ -195,44 +226,43 @@ async def delete_document_chunks(
 async def list_user_documents(
     db: motor.motor_asyncio.AsyncIOMotorDatabase,
     user_id: str,
-    storage_filenames: list[str],
+    storage_keys: list[str],
 ) -> list[dict]:
     """
-    Merge storage listing with rag_documents records.
-
-    Three states handled explicitly:
-      1. File in storage + rag_documents record   → return joined record
-      2. File in storage + no rag_documents record → synthetic "pending" record
-         (covers the async-indexing window and crash-before-write scenarios)
-      3. rag_documents record + file not in storage → index_status: "missing"
-         (orphaned record after out-of-band storage deletion)
+    Merge storage listing with plant-wide rag_documents records.
+    Signatures are kept compatible. Uses doc_id to match.
     """
-    storage_set = set(storage_filenames)
-
     cursor = db[RAG_DOCUMENTS_COLLECTION].find(
-        {"user_id": user_id, "scope": "user"},
+        {},
         {"_id": 0, "embedding": 0},
     )
     db_records: dict[str, dict] = {}
     async for doc in cursor:
-        db_records[doc["filename"]] = doc
+        db_records[doc["doc_id"]] = doc
 
     result: list[dict] = []
+    storage_doc_ids = set()
 
-    for filename in storage_set:
-        if filename in db_records:
-            result.append(db_records[filename])         # State 1
+    for key in storage_keys:
+        equipment, filename = parse_equipment_and_filename_from_key(key)
+        doc_id = make_doc_id(equipment, filename)
+        storage_doc_ids.add(doc_id)
+
+        if doc_id in db_records:
+            result.append(db_records[doc_id])
         else:
-            result.append({                              # State 2
+            result.append({
+                "doc_id": doc_id,
+                "equipment": equipment,
                 "filename": filename,
                 "index_status": "pending",
                 "chunk_count": None,
                 "indexed_at": None,
             })
 
-    for filename, record in db_records.items():
-        if filename not in storage_set:
-            result.append({**record, "index_status": "missing"})  # State 3
+    for doc_id, record in db_records.items():
+        if doc_id not in storage_doc_ids:
+            result.append({**record, "index_status": "missing"})
 
     return result
 
@@ -240,49 +270,20 @@ async def list_user_documents(
 async def list_org_documents(
     db: motor.motor_asyncio.AsyncIOMotorDatabase,
     org_id: str,
-    storage_filenames: list[str],
+    storage_keys: list[str],
 ) -> list[dict]:
     """
-    Merge storage listing with org-scoped rag_documents records.
-    Same three-state logic as list_user_documents but filtered by org_id + scope="org".
+    Org listing is unified with the plant-wide document repository.
     """
-    storage_set = set(storage_filenames)
-
-    cursor = db[RAG_DOCUMENTS_COLLECTION].find(
-        {"org_id": org_id, "scope": "org"},
-        {"_id": 0, "embedding": 0},
-    )
-    db_records: dict[str, dict] = {}
-    async for doc in cursor:
-        db_records[doc["filename"]] = doc
-
-    result: list[dict] = []
-
-    for filename in storage_set:
-        if filename in db_records:
-            result.append(db_records[filename])
-        else:
-            result.append({
-                "filename": filename,
-                "index_status": "pending",
-                "chunk_count": None,
-                "indexed_at": None,
-            })
-
-    for filename, record in db_records.items():
-        if filename not in storage_set:
-            result.append({**record, "index_status": "missing"})
-
-    return result
+    return await list_user_documents(db, "", storage_keys)
 
 
 async def get_index_health(
     db: motor.motor_asyncio.AsyncIOMotorDatabase,
     user_id: str,
 ) -> dict:
-    """Return per-status document counts for this user. Includes stale detection."""
+    """Return per-status document counts for the plant. Includes stale detection."""
     pipeline = [
-        {"$match": {"user_id": user_id, "scope": "user"}},
         {"$group": {"_id": "$index_status", "count": {"$sum": 1}}},
     ]
     cursor = db[RAG_DOCUMENTS_COLLECTION].aggregate(pipeline)
@@ -294,8 +295,6 @@ async def get_index_health(
     stale_count = 0
     if current_model:
         stale_count = await db[RAG_DOCUMENTS_COLLECTION].count_documents({
-            "user_id": user_id,
-            "scope": "user",
             "index_status": "indexed",
             "embedding_model": {"$ne": current_model},
         })
@@ -314,31 +313,5 @@ async def get_org_index_health(
     db: motor.motor_asyncio.AsyncIOMotorDatabase,
     org_id: str,
 ) -> dict:
-    """Return per-status document counts for an org's shared documents."""
-    pipeline = [
-        {"$match": {"org_id": org_id, "scope": "org"}},
-        {"$group": {"_id": "$index_status", "count": {"$sum": 1}}},
-    ]
-    cursor = db[RAG_DOCUMENTS_COLLECTION].aggregate(pipeline)
-    counts: dict[str, int] = {}
-    async for doc in cursor:
-        counts[doc["_id"]] = doc["count"]
-
-    current_model = os.getenv("EMBEDDING_MODEL", "")
-    stale_count = 0
-    if current_model:
-        stale_count = await db[RAG_DOCUMENTS_COLLECTION].count_documents({
-            "org_id": org_id,
-            "scope": "org",
-            "index_status": "indexed",
-            "embedding_model": {"$ne": current_model},
-        })
-
-    return {
-        "pending": counts.get("pending", 0),
-        "indexed": counts.get("indexed", 0),
-        "failed":  counts.get("failed", 0),
-        "missing": counts.get("missing", 0),
-        "stale":   stale_count,
-        "total":   sum(counts.values()),
-    }
+    """Return per-status document counts for the plant (unified index health)."""
+    return await get_index_health(db, "")

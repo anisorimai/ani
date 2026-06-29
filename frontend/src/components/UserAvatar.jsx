@@ -18,7 +18,7 @@ export default function UserAvatar({ className = '', style = {} }) {
     : null;
 
   const defaultFallbackStyle = {
-    background: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+    background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
     color: '#FFFFFF',
     display: 'flex',
     alignItems: 'center',

@@ -208,9 +208,12 @@ RAG_CANDIDATE_K: int   = int(os.getenv("RAG_CANDIDATE_K", "50"))
 # 0.5 means "at least half the query tokens found in the chunk" for keyword search,
 # or a cosine similarity ≥ 0.5 for vector search — both indicate relevant content.
 RAG_CONFIDENCE_THRESHOLD: float = float(os.getenv("RAG_CONFIDENCE_THRESHOLD", "0.5"))
+# Confined equipment matching boost score multiplier
+RAG_EQUIPMENT_BOOST: float = float(os.getenv("RAG_EQUIPMENT_BOOST", "1.25"))
 
 # ── LLM Behaviour ────────────────────────────────────────────────────────────
 ASSISTANT_NAME: str = os.getenv("ASSISTANT_NAME", "Voxa")
+PLANT_NAME: str = os.getenv("PLANT_NAME", "ANI Pharmaceuticals Plant")
 
 SYSTEM_PROMPT: str = os.getenv("SYSTEM_PROMPT", f"""\
 You are {ASSISTANT_NAME}, an AI assistant for ANI Pharmaceuticals connected to live plant data.

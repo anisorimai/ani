@@ -142,6 +142,27 @@ class SupabaseStorageService:
 _storage_service = None
 
 
+def verify_storage() -> None:
+    global _storage_service
+    if STORAGE_BACKEND != "supabase":
+        return
+
+    try:
+        service = SupabaseStorageService(
+            supabase_url=SUPABASE_URL,
+            service_role_key=SUPABASE_SERVICE_ROLE_KEY,
+            bucket=SUPABASE_STORAGE_BUCKET,
+            public_base_url=SUPABASE_PUBLIC_BASE_URL,
+        )
+        service.client.storage.get_bucket(SUPABASE_STORAGE_BUCKET)
+        logger.info("Supabase storage verified and ready")
+        _storage_service = service
+    except Exception as exc:
+        logger.warning("Supabase storage unavailable, falling back to local storage: %s", exc)
+        _storage_service = LocalStorageService(base_dir=DATA_DIR / "uploads")
+        logger.info("Local storage fallback active")
+
+
 def get_storage_service():
     global _storage_service
     if _storage_service is not None:

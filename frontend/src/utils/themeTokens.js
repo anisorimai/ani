@@ -1,6 +1,6 @@
 const LIGHT = {
   bg: '#f0f2f7', surface: '#ffffff', border: '#e8eaf0', borderAlert: '#fcd9b6',
-  text: { primary: '#0f1117', secondary: '#5a6072', muted: '#9da3b4' },
+  text: { primary: '#0f1117', secondary: '#374151', muted: '#5e6a80' },
   green:  { solid: '#16a34a', light: '#dcfce7',               text: '#15803d' },
   red:    { solid: '#dc2626', light: '#fee2e2',               text: '#b91c1c' },
   amber:  { solid: '#d97706', light: '#fef3c7',               text: '#b45309' },
@@ -16,7 +16,7 @@ const LIGHT = {
 
 const DARK = {
   bg: '#0B0B0F', surface: '#1A1A1F', border: 'rgba(255,255,255,0.08)', borderAlert: 'rgba(251,146,60,0.30)',
-  text: { primary: '#EAEAF0', secondary: '#C4C4D8', muted: '#9898B4' },
+  text: { primary: '#F8FAFC', secondary: '#E2E8F0', muted: '#CBD5E1' },
   green:  { solid: '#22c55e', light: 'rgba(34,197,94,0.15)',    text: '#4ade80' },
   red:    { solid: '#ef4444', light: 'rgba(239,68,68,0.15)',    text: '#f87171' },
   amber:  { solid: '#f59e0b', light: 'rgba(245,158,11,0.15)',   text: '#fbbf24' },

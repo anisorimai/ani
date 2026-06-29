@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from config.settings import HOST, PORT, CORS_ORIGINS, CORS_ORIGIN_REGEX, DATA_DIR, LLM_API_KEY, LLM_PROVIDER
 from database.mongodb import connect_db, close_db, get_db
 from services.stt_service import init_stt_service
+from services.storage_service import verify_storage
 from orchestrator.query_orchestrator import get_orchestrator
 
 logging.basicConfig(
@@ -70,6 +71,12 @@ async def _startup(app: FastAPI) -> None:
         except Exception as exc:
             logger.warning(f"RAG index init deferred: {exc}")
 
+        try:
+            from rag.equipment_registry import init_equipment_indexes
+            await init_equipment_indexes(db)
+        except Exception as exc:
+            logger.warning(f"Equipment index init deferred: {exc}")
+
         # 3. Orchestrator
         try:
             orchestrator = get_orchestrator()
@@ -84,6 +91,12 @@ async def _startup(app: FastAPI) -> None:
         init_stt_service()
     except Exception as exc:
         logger.warning(f"STT init skipped: {exc}")
+
+    # 5. Storage verification (must never block startup)
+    try:
+        verify_storage()
+    except Exception as exc:
+        logger.warning("Storage verification skipped: %s", exc)
 
     # ── LLM API key check ──
     if not LLM_API_KEY:

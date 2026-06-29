@@ -364,8 +364,8 @@ export default function Sidebar({ isOpen, onClose, onNavigateToChat }) {
         >
           {/* User avatar */}
           <UserAvatar
-            className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-semibold text-[0.7rem] overflow-hidden"
-            style={{ background: 'linear-gradient(135deg,var(--ci-primary-solid),#4cd6ff)', color: 'var(--ci-on-primary)' }}
+            className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-semibold text-[0.75rem] overflow-hidden shadow-[0_4px_10px_rgba(29,108,184,0.3)] ring-2 ring-[var(--surf)]"
+            style={{ background: 'linear-gradient(135deg, #1D6CB8 0%, #4DBADF 100%)', color: '#fff' }}
           />
 
           {/* User name + username */}

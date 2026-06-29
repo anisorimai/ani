@@ -1,0 +1,10 @@
+{
+  "include": ["."],
+  "pythonVersion": "3.11",
+  "venvPath": ".",
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}

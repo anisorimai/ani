@@ -17,7 +17,7 @@ function useQualityDashboardData() {
       .then(r => { if (!r.ok) throw new Error(`summary: ${r.status}`); return r.json(); })
       .then(sum => {
         setSummary(sum);
-        const ref = sum.latestDate ? `?reference_date=${sum.latestDate}&limit=5` : '?limit=5';
+        const ref = sum.latestDate ? `?reference_date=${sum.latestDate}&limit=10` : '?limit=10';
         return fetch(`${API_BASE}/quality-dashboard/recent-inspections${ref}`)
           .then(r => { if (!r.ok) throw new Error(`recent: ${r.status}`); return r.json(); });
       })
@@ -100,7 +100,7 @@ function ChartTip({ active, payload, label }) {
 const CSS = `
   .qlt-kpi  { display:grid; grid-template-columns:repeat(2,1fr); gap:10px }
   @media(min-width:640px) { .qlt-kpi { grid-template-columns:repeat(4,1fr) } }
-  .qlt-main { display:grid; grid-template-columns:1fr; gap:12px }
+  .qlt-main { display:grid; grid-template-columns:1fr; gap:12px; }
   @media(min-width:768px) { .qlt-main { grid-template-columns:1fr 1fr } }
   @media(min-width:1280px){ .qlt-main { grid-template-columns:1fr 1.8fr 1.3fr } }
   .qlt-kpi-val { font-size:22px }
@@ -195,11 +195,11 @@ export default function QualityDashboard() {
   });
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--bg)', minHeight: '100%' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{CSS}</style>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 52, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 52, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: T.green.light, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={T.green.solid} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
@@ -215,7 +215,7 @@ export default function QualityDashboard() {
         </div>
       </div>
 
-      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: '12px 14px 25px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflowY: 'auto' }}>
 
         {/* KPI row */}
         <div className="qlt-kpi">
@@ -247,7 +247,7 @@ export default function QualityDashboard() {
 
           {/* Deviation by Severity + Upcoming Audits stacked in one grid cell */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Card style={{ padding: '16px 18px' }}>
+            <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
               <SectionTitle>Deviation by Severity</SectionTitle>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {deviations.map((d) => (
@@ -268,7 +268,7 @@ export default function QualityDashboard() {
             </Card>
 
             {upcomingAudits.length > 0 && (
-              <Card style={{ padding: '16px 18px' }}>
+              <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
                 <SectionTitle>Upcoming Audits</SectionTitle>
                 {upcomingAudits.map((a) => (
                   <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--brd)' }}>
@@ -284,22 +284,24 @@ export default function QualityDashboard() {
           </div>
 
           {/* Pass/Fail trend */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column' }}>
             <SectionTitle>Inspection Score Trend (7 Days)</SectionTitle>
             {trendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={trendData} barCategoryGap="22%" barGap={3} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                  <XAxis dataKey="day" tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(128,128,128,0.06)' }} />
-                  <Bar dataKey="pass" name="Pass %" fill={T.green.solid} radius={[4,4,0,0]} />
-                  <Bar dataKey="fail" name="Fail %" fill={T.red.solid}   radius={[4,4,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div style={{ height: 220, display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'center' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={trendData} barCategoryGap="22%" barGap={3} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                    <XAxis dataKey="day" tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                    <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(128,128,128,0.06)' }} />
+                    <Bar dataKey="pass" name="Pass %" fill={T.green.solid} radius={[4,4,0,0]} />
+                    <Bar dataKey="fail" name="Fail %" fill={T.red.solid}   radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--txt3)', fontSize: 13 }}>No trend data available</div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <div style={{ width: 10, height: 10, borderRadius: 2, background: T.green.solid }} />
                 <span style={{ fontSize: 11, color: 'var(--txt2)' }}>Pass %</span>
@@ -312,10 +314,11 @@ export default function QualityDashboard() {
           </Card>
 
           {/* Recent inspections */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <SectionTitle>Recent Inspections</SectionTitle>
             {recent.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column' }}>
                 {recent.map((r, i) => {
                   const rs = resultStyle(r.inspection_result, T);
                   return (
@@ -331,6 +334,7 @@ export default function QualityDashboard() {
                     </div>
                   );
                 })}
+                </div>
               </div>
             ) : (
               <div style={{ color: 'var(--txt3)', fontSize: 13 }}>No recent inspection records</div>

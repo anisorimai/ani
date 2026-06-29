@@ -269,6 +269,7 @@ async def stream(websocket: WebSocket):
                     "collections_used": stream_meta.get("collections_used", []),
                     "citations":        stream_meta.get("citations", []),
                     "pagination":       stream_meta.get("pagination"),
+                    "query_understanding": stream_meta.get("query_understanding"),
                 }))
 
                 # A stopped-early response with no visible text is not history

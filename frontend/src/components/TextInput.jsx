@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { HiPaperAirplane, HiPaperClip, HiX } from 'react-icons/hi';
 
-export default function TextInput({ onSend, disabled = false }) {
+export default function TextInput({ onSend, disabled = false, onFocus, onBlur }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const textareaRef = useRef(null);
@@ -139,13 +139,14 @@ export default function TextInput({ onSend, disabled = false }) {
 
         <button
           type="button"
-          className="text-input-attach-btn flex-shrink-0 p-2 flex items-center justify-center text-[var(--txt3)] hover:text-[var(--gold-acc)] active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:!transform-none"
+          className="text-input-attach-btn flex-shrink-0 w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-full text-white shadow-[0_2px_12px_rgba(29,108,184,0.45)] hover:scale-[1.06] active:scale-95 transition-all duration-200 border-none outline-none disabled:opacity-40 disabled:cursor-not-allowed disabled:!transform-none"
+          style={{ background: 'linear-gradient(135deg, #1D6CB8, #2A8FD4)' }}
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
           aria-label="Attach file or image"
           title="Attach file"
         >
-          <HiPaperClip size={21} />
+          <HiPaperClip size={20} />
         </button>
 
         <input
@@ -168,6 +169,8 @@ export default function TextInput({ onSend, disabled = false }) {
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           disabled={disabled}
+          onFocus={onFocus}
+          onBlur={onBlur}
           rows={1}
           aria-label="Type a message"
         />

@@ -1,4 +1,4 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -124,6 +124,7 @@
 
   #root {
     height: 100dvh;
+    width: 100%;
     display: flex;
   }
 
@@ -410,15 +411,77 @@
   }
 }
 
+/* ─── Floating prompt bar — fixed glassmorphism bar at the bottom ─── */
+.floating-prompt-bar {
+  /* Removed solid background gradient to allow true glassmorphism */
+  background: transparent;
+  pointer-events: none; /* let clicks pass through the transparent gradient region */
+}
+/* Re-enable pointer events on actual interactive children */
+.floating-prompt-bar > * {
+  pointer-events: auto;
+}
+
+/* Pill inside the floating bar — glassmorphism card */
+.prompt-bar-pill {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 2px 8px  rgba(0, 0, 0, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+[data-theme="light"] .prompt-bar-pill {
+  box-shadow:
+    0 8px 28px rgba(30, 63, 93, 0.18),
+    0 2px 8px  rgba(30, 63, 93, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.90);
+}
+
+/* True glassmorphism override — much more translucent than generic glass-surface */
+.prompt-bar-pill.glass-surface {
+  background: rgba(16, 16, 22, 0.52);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+[data-theme="light"] .prompt-bar-pill.glass-surface {
+  background: rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+/* ─── Chat overlay panel — glassmorphism ─── */
+.chat-overlay-panel {
+  background: rgba(14, 16, 26, 0.62);
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 -12px 60px rgba(0, 0, 0, 0.5), 0 -1px 0 rgba(255,255,255,0.08) inset;
+}
+
+[data-theme="light"] .chat-overlay-panel {
+  background: rgba(242, 245, 255, 0.72);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.85);
+  border-left: 1px solid rgba(255, 255, 255, 0.60);
+  border-right: 1px solid rgba(255, 255, 255, 0.60);
+  box-shadow: 0 -12px 60px rgba(60, 80, 180, 0.10), 0 -1px 0 rgba(255,255,255,0.95) inset;
+}
+
 /* ─── Light-mode surface/background tokens used as Tailwind arbitrary values ─── */
 [data-theme="light"] {
   --bg:         #F8F7F4;
+  --glass-chip-bg: rgba(248, 247, 244, 0.88);
   --bg2:        #F0EDE6;
   --surf:       #FFFFFF;
   --surf-hover: #F5F3EE;
-  --txt:        #1A1A1F;
-  --txt2:       #6B6B7B;
-  --txt3:       #9CA3AF;
+  --txt:        #0f1117;
+  --txt2:       #374151; /* Darker slate for high contrast */
+  --txt3:       #5e6a80; /* Medium-dark slate instead of light grey */
+  --icon-glow:  rgba(59, 130, 246, 0.4);
   --brd:        rgba(0,0,0,0.08);
   --brd2:       rgba(0,0,0,0.15);
   --gold-acc:   #1D6CB8;
@@ -435,12 +498,14 @@
 
 [data-theme="dark"] {
   --bg:         #0B0B0F;
+  --glass-chip-bg: rgba(11, 11, 15, 0.82);
   --bg2:        #101015;
   --surf:       #1A1A1F;
   --surf-hover: #222228;
-  --txt:        #EAEAF0;
-  --txt2:       #C4C4D8;
-  --txt3:       #9898B4;
+  --txt:        #F8FAFC; /* Brighter white */
+  --txt2:       #E2E8F0; /* Very bright slate instead of grey */
+  --txt3:       #CBD5E1; /* Light slate instead of dim grey */
+  --icon-glow:  rgba(96, 165, 250, 0.4);
   --brd:        rgba(255,255,255,0.06);
   --brd2:       rgba(255,255,255,0.12);
   --gold-acc:   #4DBADF;
@@ -645,14 +710,14 @@
 
 [data-theme="light"] .chat-input-row {
   border-radius: 999px !important;
-  border: 1px solid #d6e0ea !important;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(30, 63, 93, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 10px 24px rgba(30, 63, 93, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
 }
 
 [data-theme="light"] #text-input-field {
-  border: 1px solid #d9e1e8;
-  background: #ffffff;
+  border: 1px solid rgba(217, 225, 232, 0.5);
+  background: rgba(255, 255, 255, 0.4);
   border-radius: 999px;
   min-height: 40px;
 }
@@ -680,8 +745,7 @@
 }
 
 [data-theme="light"] #voice-record-btn.vb-idle {
-  background: linear-gradient(135deg, #1A3B8A, #1D6CB8) !important;
-  color: #ffffff !important;
+  /* Override removed so it matches the inline style of the New Chat button */
 }
 
 /* ── Welcome screen message bubble ── */

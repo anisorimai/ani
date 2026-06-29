@@ -313,30 +313,24 @@ function Donut({ data, total, centerText, centerSub, size = 150, thickness = 18 
 
 // ─── RESPONSIVE CSS ───────────────────────────────────────────────────────────
 const DASHBOARD_CSS = `
-  .pd-content { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
-  @media (min-width: 768px) { .pd-content { padding: 16px 24px; gap: 14px; } }
+  .pd-content { padding: 12px 14px 25px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto; }
+  @media (min-width: 768px) { .pd-content { padding: 16px 24px 25px; gap: 14px; } }
 
   /* KPI row — 2 cols mobile, 3 on sm, 6 on lg */
   .pd-grid-kpi { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   @media (min-width: 540px)  { .pd-grid-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 1024px) { .pd-grid-kpi { grid-template-columns: repeat(6, 1fr); gap: 10px; } }
 
-  /* Quality control row — 2 cols mobile, 3 on sm, 4 cols on lg+ */
-  .pd-grid-quality { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  @media (min-width: 640px)  { .pd-grid-quality { grid-template-columns: repeat(3, 1fr); } }
-  @media (min-width: 1024px) { .pd-grid-quality { grid-template-columns: repeat(4, 1fr); gap: 10px; } }
+  /* Row 2: donuts + shift bar + area output (4 cols on desktop) */
+  .pd-grid-row2 { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  @media (min-width: 640px)  { .pd-grid-row2 { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .pd-grid-row2 { grid-template-columns: 1fr 1fr 2fr 1.5fr; gap: 10px; } }
+  @media (min-width: 640px) and (max-width: 1023px) { .pd-row2-shift { grid-column: span 2; } }
 
-  /* Charts top row — donuts + shift bar */
-  .pd-grid-charts-top { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 640px)  { .pd-grid-charts-top { grid-template-columns: 1fr 1fr; } }
-  @media (min-width: 1024px) { .pd-grid-charts-top { grid-template-columns: 1fr 1fr 2fr; } }
-
-  /* Shift card: spans 2 on tablet */
-  @media (min-width: 640px) and (max-width: 1023px) { .pd-shift-card { grid-column: span 2; } }
-
-  /* Charts bottom row — area output + activities */
-  .pd-grid-charts-bot { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  @media (min-width: 640px) { .pd-grid-charts-bot { grid-template-columns: 1fr 1fr; } }
+  /* Row 3: machine parameters + production quality + activities */
+  .pd-grid-row3 { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: start; }
+  @media (min-width: 768px)  { .pd-grid-row3 { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1024px) { .pd-grid-row3 { grid-template-columns: 2fr 1.3fr 1fr; gap: 10px; } }
 
   /* Critical params inner grid */
   .pd-grid-params { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -518,6 +512,7 @@ export default function PharmaPlantDashboard() {
       totalProduced: fmtUnits(today.totalProduced),
       batchTotal: today.batches.total,
       qualityMetrics: qData?.today ?? null,
+      qualityLast9: (qData?.last9 ?? []).map((d) => Math.round(d.qualityPassRate)),
     };
   }, [data, qData, theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -537,10 +532,10 @@ export default function PharmaPlantDashboard() {
     );
   }
 
-  const { kpiCards, productionByArea, batchStatus, criticalParams, activities, inventoryData, shiftChartData, alerts, totalProduced, batchTotal, qualityMetrics } = derived;
+  const { kpiCards, productionByArea, batchStatus, criticalParams, activities, inventoryData, shiftChartData, alerts, totalProduced, batchTotal, qualityMetrics, qualityLast9 } = derived;
 
   return (
-    <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: 'var(--bg)', minHeight: "100%" }}>
+    <div style={{ fontFamily: "Inter, system-ui, -apple-system, sans-serif", background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{DASHBOARD_CSS}</style>
 
       {/* ── STICKY HEADER ──────────────────────────────────────────────────── */}
@@ -600,115 +595,8 @@ export default function PharmaPlantDashboard() {
           ))}
         </div>
 
-        {/* ── QUALITY CONTROL ROW ────────────────────────────────────────────── */}
-        {qualityMetrics && (
-          <div className="pd-grid-quality">
-
-            {/* Audit Score */}
-            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.green.solid }} />
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>Audit Score</span>
-                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.green.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon type="shield" size={13} color={T.green.solid} />
-                </div>
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.03em" }}>
-                  {qualityMetrics.auditScore.toFixed(1)}%
-                </span>
-              </div>
-              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
-              <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3, color: qualityMetrics.auditScore >= qualityMetrics.prevAuditScore ? T.green.text : T.red.text }}>
-                <span style={{ fontSize: 13 }}>{qualityMetrics.auditScore >= qualityMetrics.prevAuditScore ? "↑" : "↓"}</span>
-                <span>{Math.abs(qualityMetrics.auditScore - qualityMetrics.prevAuditScore).toFixed(1)}% vs previous audit</span>
-              </div>
-            </Card>
-
-            {/* Deviations */}
-            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.amber.solid }} />
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>Deviations</span>
-                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.amber.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon type="alertTri" size={13} color={T.amber.solid} />
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                {[
-                  { label: "Critical", count: qualityMetrics.deviationCritical, color: T.red.solid, bg: T.red.light, text: T.red.text },
-                  { label: "Major",    count: qualityMetrics.deviationMajor,    color: T.amber.solid, bg: T.amber.light, text: T.amber.text },
-                  { label: "Minor",    count: qualityMetrics.deviationMinor,    color: T.blue.solid,  bg: T.blue.light,  text: T.blue.text  },
-                ].map(({ label, count, bg, text }) => (
-                  <div key={label} style={{ flex: 1, background: bg, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: text }}>{count}</div>
-                    <div style={{ fontSize: 9, color: text, fontWeight: 600, marginTop: 1 }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
-              <div style={{ fontSize: 11, color: 'var(--txt3)', fontWeight: 500 }}>
-                {qualityMetrics.deviationCritical + qualityMetrics.deviationMajor + qualityMetrics.deviationMinor} total deviations today
-              </div>
-            </Card>
-
-            {/* CAPA Status */}
-            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.purple.solid }} />
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 4, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>CAPA Status</span>
-                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.purple.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon type="calcheck" size={13} color={T.purple.solid} />
-                </div>
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.03em" }}>{qualityMetrics.capaPending}</span>
-                <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 4, fontWeight: 500 }}>Pending</span>
-              </div>
-              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 8 }} />
-              <div style={{ display: "flex", gap: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: T.red.text, background: T.red.light, borderRadius: 5, padding: "2px 6px" }}>
-                  {qualityMetrics.capaCritical} Critical
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: T.amber.text, background: T.amber.light, borderRadius: 5, padding: "2px 6px" }}>
-                  {qualityMetrics.capaMajor} Major
-                </span>
-              </div>
-            </Card>
-
-            {/* Upcoming Audits */}
-            <Card style={{ padding: "14px 16px 13px", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, borderRadius: "12px 12px 0 0", background: T.blue.solid }} />
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, marginBottom: 10 }}>
-                <span style={{ fontSize: 11, color: 'var(--txt2)', fontWeight: 500 }}>Upcoming Audits</span>
-                <div style={{ width: 26, height: 26, borderRadius: 7, background: T.blue.light, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon type="cal" size={13} color={T.blue.solid} />
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {qualityMetrics.upcomingAudits.map((audit, i) => {
-                  const priorityColor = audit.priority === "High" ? T.red.text : audit.priority === "Medium" ? T.amber.text : T.green.text;
-                  const priorityBg   = audit.priority === "High" ? T.red.light  : audit.priority === "Medium" ? T.amber.light  : T.green.light;
-                  return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < qualityMetrics.upcomingAudits.length - 1 ? '1px solid var(--brd)' : "none" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--txt)', whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{audit.name}</div>
-                        <div style={{ fontSize: 9.5, color: 'var(--txt3)', marginTop: 1 }}>{audit.dept} · {audit.date}</div>
-                      </div>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: priorityColor, background: priorityBg, borderRadius: 4, padding: "2px 5px", flexShrink: 0 }}>
-                        {audit.priority}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-
-          </div>
-        )}
-
-        {/* ── ROW 2: CHARTS TOP — donuts + shift bar ─────────────────────────── */}
-        <div className="pd-grid-charts-top">
+        {/* ── ROW 2: Donuts + Shift Bar + Area Output ─────────────────────────── */}
+        <div className="pd-grid-row2">
 
           {/* Production by Area */}
           <Card style={{ padding: "16px 18px" }}>
@@ -736,16 +624,11 @@ export default function PharmaPlantDashboard() {
             </div>
           </Card>
 
-          {/* Shift Performance — spans 2 cols on tablet, 2fr on desktop */}
-          <Card className="pd-shift-card" style={{ padding: "16px 18px" }}>
+          {/* Shift Performance — spans 2 cols on tablet */}
+          <Card className="pd-row2-shift" style={{ padding: "16px 18px" }}>
             <SectionTitle>Shift Performance</SectionTitle>
             <ShiftBarChart data={shiftChartData} />
           </Card>
-
-        </div>
-
-        {/* ── ROW 3: CHARTS BOTTOM — area output + activities ────────────────── */}
-        <div className="pd-grid-charts-bot">
 
           {/* Area Output Today */}
           <Card style={{ padding: "16px 18px" }}>
@@ -757,7 +640,120 @@ export default function PharmaPlantDashboard() {
             </div>
           </Card>
 
-          {/* Upcoming Activities */}
+        </div>
+
+        {/* ── ROW 3: Critical Machine Parameters (left) + Upcoming Activities (right) ── */}
+        <div className="pd-grid-row3">
+
+          {/* Left: Critical Machine Parameters */}
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "11px 16px", borderBottom: '1px solid var(--brd)', display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt)', letterSpacing: "0.01em" }}>Critical Machine Parameters</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: T.green.text, background: T.green.light, padding: "2px 8px", borderRadius: 10 }}>● Live</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)" }}>
+              {criticalParams.map((p, i) => {
+                const total = criticalParams.length;
+                const isOdd = total % 2 !== 0;
+                const isLastItem = i === total - 1;
+                const isRightCol = i % 2 !== 0;
+                const isBottomRow = isOdd ? isLastItem : i >= total - 2;
+                return (
+                  <div
+                    key={p.label}
+                    style={{
+                      padding: "13px 15px",
+                      borderRight: !isRightCol ? '1px solid var(--brd)' : "none",
+                      borderBottom: isBottomRow ? "none" : '1px solid var(--brd)',
+                      gridColumn: isOdd && isLastItem ? "span 2" : undefined,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 6, background: p.iconBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <Icon type={p.iconType} size={11} color={p.iconColor} />
+                        </div>
+                        <span style={{ fontSize: 10.5, color: 'var(--txt2)', fontWeight: 500 }}>{p.label}</span>
+                      </div>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: T.green.text, background: T.green.light, padding: "1px 5px", borderRadius: 4 }}>Normal</span>
+                    </div>
+                    <div style={{ marginBottom: 7 }}>
+                      <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--txt)', letterSpacing: "-0.02em" }}>{p.value}</span>
+                      {p.unit && <span style={{ fontSize: 11, color: 'var(--txt3)', marginLeft: 3 }}>{p.unit}</span>}
+                    </div>
+                    <div style={{ height: 4, borderRadius: 4, background: "rgba(128,128,128,0.15)", overflow: "hidden" }}>
+                      <div style={{ width: `${p.gaugePct * 100}%`, height: "100%", background: p.iconColor, borderRadius: 4, transition: "width 0.4s" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Middle: Production Quality — quality data that directly reflects production */}
+          {qualityMetrics && (
+            <Card style={{ padding: "16px 18px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <SectionTitle style={{ margin: 0 }}>Production Quality</SectionTitle>
+                <span style={{ fontSize: 9.5, fontWeight: 600, color: T.blue.text, background: T.blue.light, padding: "2px 7px", borderRadius: 8 }}>Today</span>
+              </div>
+
+              {/* Batch Pass Rate */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--txt2)', fontWeight: 500 }}>Batch Pass Rate</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", color: qualityMetrics.qualityPassRate >= 90 ? T.green.text : qualityMetrics.qualityPassRate >= 75 ? T.amber.text : T.red.text }}>
+                    {qualityMetrics.qualityPassRate.toFixed(1)}%
+                  </span>
+                </div>
+                <div style={{ height: 5, borderRadius: 5, background: "rgba(128,128,128,0.13)", overflow: "hidden" }}>
+                  <div style={{ width: `${qualityMetrics.qualityPassRate}%`, height: "100%", borderRadius: 5, background: qualityMetrics.qualityPassRate >= 90 ? T.green.solid : qualityMetrics.qualityPassRate >= 75 ? T.amber.solid : T.red.solid, transition: "width 0.4s" }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 10, color: T.green.text, fontWeight: 600 }}>✓ {qualityMetrics.passCount} passed</span>
+                  <span style={{ fontSize: 10, color: T.red.text, fontWeight: 600 }}>✗ {qualityMetrics.failCount} failed</span>
+                </div>
+              </div>
+
+              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 12 }} />
+
+              {/* Process Deviations */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7 }}>
+                  <Icon type="alertTri" size={11} color={T.amber.solid} />
+                  <span style={{ fontSize: 10.5, color: 'var(--txt2)', fontWeight: 500 }}>Process Deviations</span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    { label: "Critical", count: qualityMetrics.deviationCritical, bg: T.red.light,   text: T.red.text   },
+                    { label: "Major",    count: qualityMetrics.deviationMajor,    bg: T.amber.light, text: T.amber.text },
+                    { label: "Minor",    count: qualityMetrics.deviationMinor,    bg: T.blue.light,  text: T.blue.text  },
+                  ].map(({ label, count, bg, text }) => (
+                    <div key={label} style={{ flex: 1, background: bg, borderRadius: 8, padding: "6px 4px", textAlign: "center" }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: text }}>{count}</div>
+                      <div style={{ fontSize: 9, color: text, fontWeight: 600 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ height: 1, background: 'var(--brd)', marginBottom: 12 }} />
+
+              {/* Open NCRs + Inspected count */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: qualityMetrics.openNcrs > 0 ? T.red.light : T.green.light, border: `1px solid ${qualityMetrics.openNcrs > 0 ? T.red.text : T.green.text}22` }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: qualityMetrics.openNcrs > 0 ? T.red.text : T.green.text }}>{qualityMetrics.openNcrs}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 500, color: qualityMetrics.openNcrs > 0 ? T.red.text : T.green.text }}>Open NCRs</div>
+                </div>
+                <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: T.blue.light, border: `1px solid ${T.blue.text}22` }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: T.blue.text }}>{qualityMetrics.totalInspected}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 500, color: T.blue.text }}>Inspected Today</div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Right: Upcoming Activities */}
           <Card style={{ padding: "16px 18px" }}>
             <SectionTitle>Upcoming Activities</SectionTitle>
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
@@ -768,36 +764,6 @@ export default function PharmaPlantDashboard() {
           </Card>
 
         </div>
-
-        {/* ── ROW 3: CRITICAL PARAMS + ALERTS (commented out) ──────────────
-        <div className="pd-grid-bottom">
-
-          {/* Critical Parameters *\/}
-          <Card style={{ padding: "16px 20px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)' }}>Critical Parameters</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: T.green.text, background: T.green.light, padding: "2px 8px", borderRadius: 10 }}>● Live</span>
-              </div>
-            </div>
-            <div className="pd-grid-params">
-              {criticalParams.map((p) => (
-                <ParamCard key={p.label} p={p} />
-              ))}
-            </div>
-          </Card>
-
-          {/* Alerts Summary *\/}
-          <Card style={{ padding: "16px 18px" }}>
-            <SectionTitle>Alerts Summary</SectionTitle>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-              {alerts.map(a => (
-                <AlertRow key={a.label} a={a} />
-              ))}
-            </div>
-          </Card>
-        </div>
-        ────────────────────────────────────────────────────────────────── */}
       </div>
     </div>
   );

@@ -81,7 +81,7 @@ function CustomTooltip({ active, payload, label, T }) {
 const CSS = `
   .pkg-kpi  { display:grid; grid-template-columns:repeat(2,1fr); gap:10px }
   @media(min-width:640px) { .pkg-kpi { grid-template-columns:repeat(4,1fr) } }
-  .pkg-main { display:grid; grid-template-columns:1fr; gap:12px }
+  .pkg-main { display:grid; grid-template-columns:1fr; gap:12px; }
   @media(min-width:768px) { .pkg-main { grid-template-columns:1fr 1fr } }
   @media(min-width:1280px){ .pkg-main { grid-template-columns:1.2fr 1fr 1.5fr } }
   .pkg-kpi-val { font-size:22px }
@@ -104,6 +104,9 @@ export default function PackagingDashboard() {
     { name: 'Line B', product: 'Ibuprofen 400mg',    speed: '380 pkg/min', status: 'Running',     color: T.green.solid, bg: T.green.light },
     { name: 'Line C', product: 'Paracetamol 650mg',  speed: '—',           status: 'Maintenance', color: T.amber.solid, bg: T.amber.light },
     { name: 'Line D', product: 'Metformin 1g',       speed: '—',           status: 'Idle',        color: 'var(--txt2)', bg: 'var(--brd2)' },
+    { name: 'Line E', product: 'Cetirizine 10mg',    speed: '310 pkg/min', status: 'Running',     color: T.green.solid, bg: T.green.light },
+    { name: 'Line F', product: 'Omeprazole 20mg',    speed: '—',           status: 'Setup',       color: T.blue.solid,  bg: T.blue.light },
+    { name: 'Line G', product: 'Aspirin 75mg',       speed: '450 pkg/min', status: 'Running',     color: T.green.solid, bg: T.green.light },
   ];
 
   const PENDING_ORDERS = [
@@ -112,14 +115,25 @@ export default function PackagingDashboard() {
     { order: 'PKG-2024-003', product: 'Paracetamol 650mg Box',     qty: '15,000', due: 'Tomorrow 9 AM', status: 'Pending',     color: T.amber.solid, bg: T.amber.light },
     { order: 'PKG-2024-004', product: 'Metformin 1g Foil Strip',   qty: '6,200',  due: 'Tomorrow 2 PM', status: 'Pending',     color: T.amber.solid, bg: T.amber.light },
     { order: 'PKG-2024-005', product: 'Cetirizine 10mg Blister',   qty: '20,000', due: 'Jun 25',        status: 'Scheduled',  color: 'var(--txt2)', bg: 'var(--brd2)' },
+    { order: 'PKG-2024-006', product: 'Omeprazole 20mg Bottle',    qty: '5,000',  due: 'Jun 26',        status: 'Scheduled',  color: 'var(--txt2)', bg: 'var(--brd2)' },
+    { order: 'PKG-2024-007', product: 'Aspirin 75mg Strip',        qty: '18,500', due: 'Jun 26',        status: 'Scheduled',  color: 'var(--txt2)', bg: 'var(--brd2)' },
+    { order: 'PKG-2024-008', product: 'Vitamin C 500mg Tube',      qty: '4,000',  due: 'Jun 27',        status: 'Scheduled',  color: 'var(--txt2)', bg: 'var(--brd2)' },
+    { order: 'PKG-2024-009', product: 'Loratadine 10mg Blister',   qty: '9,000',  due: 'Jun 27',        status: 'Scheduled',  color: 'var(--txt2)', bg: 'var(--brd2)' },
+    { order: 'PKG-2024-010', product: 'Diclofenac 50mg Gel',       qty: '3,500',  due: 'Jun 28',        status: 'Scheduled',  color: 'var(--txt2)', bg: 'var(--brd2)' },
+  ];
+
+  const RECENT_ALERTS = [
+    { time: '10:42 AM', msg: 'Line C pressure drop detected. Maintenance notified.', priority: 'High', color: T.red.solid, bg: T.red.light },
+    { time: '09:15 AM', msg: 'Material shortage warning for Packaging Line B.', priority: 'Medium', color: T.amber.solid, bg: T.amber.light },
+    { time: '08:05 AM', msg: 'Routine maintenance completed on Line A.', priority: 'Low', color: T.blue.solid, bg: T.blue.light },
   ];
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--bg)', minHeight: '100%' }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <style>{CSS}</style>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 52, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--surf)', borderBottom: '1px solid var(--brd)', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 52, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: T.blue.light, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={T.blue.solid} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -132,7 +146,7 @@ export default function PackagingDashboard() {
         <div style={{ fontSize: 10.5, color: T.green.text, background: T.green.light, padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>● Live</div>
       </div>
 
-      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: '12px 14px 25px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflowY: 'auto' }}>
 
         {/* KPI row */}
         <div className="pkg-kpi">
@@ -163,7 +177,7 @@ export default function PackagingDashboard() {
         <div className="pkg-main">
 
           {/* Line Status */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <SectionTitle>Packaging Line Status</SectionTitle>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {LINE_STATUS.map((l) => (
@@ -182,23 +196,42 @@ export default function PackagingDashboard() {
             </div>
           </Card>
 
-          {/* Hourly output chart */}
-          <Card style={{ padding: '16px 18px' }}>
-            <SectionTitle>Hourly Output (Today)</SectionTitle>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={HOURLY_DATA} barCategoryGap="25%" margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-                <XAxis dataKey="hour" tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(1)}k`} />
-                <Tooltip content={<CustomTooltip T={T} />} cursor={{ fill: 'rgba(128,128,128,0.06)', radius: [4,4,0,0] }} />
-                <Bar dataKey="packages" fill={T.blue.solid} radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
+          {/* Middle Column: Hourly output + Recent Alerts */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'hidden' }}>
+            <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <SectionTitle>Hourly Output (Today)</SectionTitle>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={HOURLY_DATA} barCategoryGap="25%" margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                    <XAxis dataKey="hour" tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: 'var(--txt3)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(1)}k`} />
+                    <Tooltip content={<CustomTooltip T={T} />} cursor={{ fill: 'rgba(128,128,128,0.06)', radius: [4,4,0,0] }} />
+                    <Bar dataKey="packages" fill={T.blue.solid} radius={[4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <SectionTitle>Recent Alerts</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflow: 'auto' }}>
+                {RECENT_ALERTS.map((a, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px', borderRadius: 8, background: a.bg, border: `1px solid ${a.color}30` }}>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: a.color, marginTop: 4, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: 'var(--txt)', lineHeight: 1.4 }}>{a.msg}</div>
+                      <div style={{ fontSize: 9.5, color: a.color, fontWeight: 700, marginTop: 4 }}>{a.priority} · {a.time}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
 
           {/* Pending orders */}
-          <Card style={{ padding: '16px 18px' }}>
+          <Card style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 200, overflow: 'hidden' }}>
             <SectionTitle>Pending Orders</SectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flex: 1, overflow: 'auto' }}>
               {PENDING_ORDERS.map((o, i) => (
                 <div key={o.order} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: i < PENDING_ORDERS.length - 1 ? '1px solid var(--brd)' : 'none' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
