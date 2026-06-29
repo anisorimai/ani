@@ -150,6 +150,18 @@ def build_analytics_context(analytics_results: dict[str, Any]) -> str:
                 prefix = "Overall " if has_group_breakdown else ""
                 lines.append(f"{prefix}{op_label} {field_label}: {val_str}")
 
+        for metric in data.get("derived_metrics", []) or []:
+            label = metric.get("label", "Derived Metric")
+            pct = metric.get("percentage")
+            matched = metric.get("matched_count")
+            total = metric.get("total_count")
+            field = metric.get("field")
+            if isinstance(pct, (int, float)) and isinstance(matched, int) and isinstance(total, int):
+                field_note = f" from {field}" if field else ""
+                lines.append(
+                    f"{label}: {pct:,.2f}% ({matched:,} of {total:,} records{field_note})"
+                )
+
         for rec_key in ("top_records", "bottom_records"):
             if rec_key in data and data[rec_key]:
                 label = "Top ranked records:" if rec_key == "top_records" else "Bottom ranked records:"

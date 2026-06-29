@@ -44,7 +44,7 @@ def resolve_time_range_to_filter(time_range: str, date_field: str) -> dict:
     from datetime import date, timedelta
 
     today = date.today()
-    tr = time_range.lower().strip()
+    tr = time_range.lower().strip(" ?.,;")
 
     # next N days/weeks/months/years
     m = _re.match(r"next\s+(\d+)\s+(day|week|month|year)s?", tr)
@@ -162,7 +162,21 @@ def resolve_time_range_to_filter(time_range: str, date_field: str) -> dict:
         "may": 5, "june": 6, "july": 7, "august": 8,
         "september": 9, "october": 10, "november": 11, "december": 12,
     }
-    m = _re.match(r"(" + "|".join(_MONTHS) + r")(?:\s+(\d{4}))?", tr)
+    
+    # Month DD, YYYY (e.g. "march 15, 2026")
+    m = _re.match(r"(" + "|".join(_MONTHS) + r")\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$", tr)
+    if m:
+        month_num = _MONTHS[m.group(1)]
+        day = int(m.group(2))
+        year = int(m.group(3))
+        try:
+            from datetime import date as _date
+            d = _date(year, month_num, day)
+            return {date_field: {"$gte": str(d), "$lte": str(d)}}
+        except ValueError:
+            pass
+
+    m = _re.match(r"(" + "|".join(_MONTHS) + r")(?:\s+(\d{4}))?$", tr)
     if m:
         month_num = _MONTHS[m.group(1)]
         year = int(m.group(2)) if m.group(2) else today.year

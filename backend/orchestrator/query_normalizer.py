@@ -288,6 +288,9 @@ quality_dashboard fields:
 "How many critical CAPAs are open?"
 → {"metrics":["capa_critical_count"],"entities":["capa"],"filters":{},"aggregations":["sum"],"time_range":null,"grouping":null}
 
+"How many critical CAPAs were pending exactly as of March 15, 2026?"
+→ {"metrics":["capa_critical_count"],"entities":["capa"],"filters":{},"aggregations":["sum"],"time_range":"March 15, 2026","grouping":null}
+
 "What is the current audit score?"
 → {"metrics":["audit_score_pct"],"entities":["audits"],"filters":{},"aggregations":["avg"],"time_range":null,"grouping":null}
 

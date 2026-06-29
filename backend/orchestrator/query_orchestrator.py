@@ -165,6 +165,25 @@ def _try_direct_count_response(
     Returns None when the query is too complex for direct generation (has top_records,
     group_by, or multiple aggregated metrics that need prose explanation).
     """
+    derived = [
+        metric
+        for data in analytics_results.values()
+        if isinstance(data, dict)
+        and "group_by" not in data
+        and "group_by_metrics" not in data
+        and "top_records" not in data
+        and "bottom_records" not in data
+        for metric in (data.get("derived_metrics") or [])
+    ]
+    if len(derived) == 1:
+        metric = derived[0]
+        pct = metric.get("percentage")
+        matched = metric.get("matched_count")
+        total = metric.get("total_count")
+        label = metric.get("label", "Rate")
+        if isinstance(pct, (int, float)) and isinstance(matched, int) and isinstance(total, int):
+            return f"{label} is {pct:,.2f}% ({matched:,} out of {total:,} records)."
+
     # Find collections where a real filter was applied and the result is just a count.
     # Skip collections with top_records/bottom_records — those need LLM narration to
     # present the actual record names meaningfully.
