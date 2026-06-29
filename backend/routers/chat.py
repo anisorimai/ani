@@ -173,6 +173,7 @@ async def stream(websocket: WebSocket):
             page              = int(data.get("page", 1))
             request_id        = str(data.get("request_id", "") or "")
             dashboard_context = str(data.get("dashboard_context", "") or "")
+            pdf_attachments   = data.get("pdf_attachments") or []
 
             def _frame(payload: dict) -> dict:
                 """Echo the request_id on every frame of this request."""
@@ -196,6 +197,7 @@ async def stream(websocket: WebSocket):
                     user_id=ws_user_id,
                     org_id=ws_org_id,
                     dashboard_context=dashboard_context,
+                    pdf_attachments=pdf_attachments,
                 )
                 token_task = asyncio.create_task(gen.__anext__())
                 inbox_task = asyncio.create_task(inbox.get())

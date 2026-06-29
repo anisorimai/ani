@@ -179,7 +179,7 @@ function IframeResizer({ srcDoc, messageId }) {
  * { id, role, content, type: 'text'|'voice', createdAt, isError }
  */
 export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, isStreaming, triggerQuery, onPageChange }) {
-  const { role, content, type, createdAt, isError, attachments } = message;
+  const { role, content, type, createdAt, isError, attachments, citations } = message;
   const isUser = role === 'user';
   const isVoice = type === 'voice';
 
@@ -465,6 +465,213 @@ export default function MessageBubble({ message, onRetry, onRegenerate, onEdit, 
           {/* Streaming cursor */}
           {isStreaming && (
             <span className="inline-block text-blue-500 animate-pulse-beat ml-0.5" aria-hidden="true">▊</span>
+          )}
+
+          {/* Citations / Sources */}
+          {!isUser && citations?.length > 0 && (
+            <div style={{
+              marginTop: '16px',
+              paddingTop: '12px',
+              borderTop: '1px dashed rgba(255, 255, 255, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{
+                fontSize: '11px',
+                fontWeight: 'bold',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: '#4DBADF',
+                opacity: 0.85,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <svg style={{ width: '14px', height: '14px', fill: 'none' }} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <span>Sources & References</span>
+              </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}>
+                {citations.map((cit, idx) => {
+                  const url = cit.source_url || cit.url;
+                  const displayName = cit.filename || "Reference Document";
+                  const badgeText = cit.equipment && cit.equipment !== 'General' ? cit.equipment : null;
+
+                  if (url) {
+                    return (
+                      <a
+                        key={idx}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(77, 186, 223, 0.25)',
+                          background: 'rgba(77, 186, 223, 0.06)',
+                          fontSize: '12px',
+                          color: '#4DBADF',
+                          textDecoration: 'none',
+                          transition: 'all 0.15s ease-in-out',
+                          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = 'rgba(77, 186, 223, 0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(77, 186, 223, 0.4)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'rgba(77, 186, 223, 0.06)';
+                          e.currentTarget.style.borderColor = 'rgba(77, 186, 223, 0.25)';
+                        }}
+                      >
+                        <svg style={{ width: '14px', height: '14px', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span style={{
+                          textOverflow: 'ellipsis',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '220px',
+                          fontWeight: 600,
+                          color: 'hsl(205,80%,70%)'
+                        }} title={displayName}>{displayName}</span>
+                        {badgeText && (
+                          <span style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            borderRadius: '4px',
+                            background: 'hsl(213,70%,20%)',
+                            color: 'hsl(205,90%,75%)',
+                            marginLeft: '4px',
+                            letterSpacing: '0.06em'
+                          }}>
+                            {badgeText}
+                          </span>
+                        )}
+                        {cit.document_type && (
+                          <span style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            borderRadius: '4px',
+                            background: 'hsl(213,70%,20%)',
+                            color: 'hsl(205,90%,75%)',
+                            marginLeft: '4px',
+                            letterSpacing: '0.06em'
+                          }}>
+                            {cit.document_type}
+                          </span>
+                        )}
+                        {cit.dashboard_scope && cit.dashboard_scope.toLowerCase() !== 'enterprise' && (
+                          <span style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            borderRadius: '4px',
+                            background: 'hsl(213,70%,20%)',
+                            color: 'hsl(205,90%,75%)',
+                            marginLeft: '4px',
+                            letterSpacing: '0.06em'
+                          }}>
+                            {cit.dashboard_scope}
+                          </span>
+                        )}
+                        <svg style={{ width: '12px', height: '12px', opacity: 0.7, flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    );
+                  } else {
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          fontSize: '12px',
+                          color: 'var(--txt2)'
+                        }}
+                      >
+                        <svg style={{ width: '14px', height: '14px', flexShrink: 0, opacity: 0.6 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span style={{
+                          textOverflow: 'ellipsis',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '220px',
+                          fontWeight: 600,
+                          color: 'hsl(205,80%,70%)'
+                        }} title={displayName}>{displayName}</span>
+                        {badgeText && (
+                          <span style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            borderRadius: '4px',
+                            background: 'hsl(213,70%,20%)',
+                            color: 'hsl(205,90%,75%)',
+                            marginLeft: '4px',
+                            letterSpacing: '0.06em'
+                          }}>
+                            {badgeText}
+                          </span>
+                        )}
+                        {cit.document_type && (
+                          <span style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            borderRadius: '4px',
+                            background: 'hsl(213,70%,20%)',
+                            color: 'hsl(205,90%,75%)',
+                            marginLeft: '4px',
+                            letterSpacing: '0.06em'
+                          }}>
+                            {cit.document_type}
+                          </span>
+                        )}
+                        {cit.dashboard_scope && cit.dashboard_scope.toLowerCase() !== 'enterprise' && (
+                          <span style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            borderRadius: '4px',
+                            background: 'hsl(213,70%,20%)',
+                            color: 'hsl(205,90%,75%)',
+                            marginLeft: '4px',
+                            letterSpacing: '0.06em'
+                          }}>
+                            {cit.dashboard_scope}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+            </div>
           )}
         </div>
 

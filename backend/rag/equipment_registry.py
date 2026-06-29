@@ -31,33 +31,56 @@ async def upsert_equipment(
     equipment_id = make_equipment_id(dashboard_scope, equipment_name)
     display_name = (equipment_name or "General").replace("_", " ").title()
 
-    await db[COLLECTION_NAME].update_one(
-        {"equipment_id": equipment_id},
-        {
-            "$set": {
-                "equipment_id": equipment_id,
-                "name": (equipment_name or "general").strip().lower(),
-                "display_name": display_name,
-                "dashboard_scope": (dashboard_scope or "enterprise").strip().lower(),
-                "last_updated": now,
-                "source_url": source_url,
-            },
-            "$addToSet": {
-                "document_types_available": document_type,
-                "filenames": filename,
-            },
-            "$setOnInsert": {
-                "created_at": now,
-                "doc_count": 0,
-            },
-        },
-        upsert=True,
+    # Check if the filename already exists for this equipment
+    existing = await db[COLLECTION_NAME].find_one(
+        {"equipment_id": equipment_id, "filenames": filename}
     )
 
-    await db[COLLECTION_NAME].update_one(
-        {"equipment_id": equipment_id, "filenames": {"$ne": filename}},
-        {"$inc": {"doc_count": 1}},
-    )
+    if existing is None:
+        # Filename not found: do a single update_one with $inc doc_count
+        await db[COLLECTION_NAME].update_one(
+            {"equipment_id": equipment_id},
+            {
+                "$set": {
+                    "equipment_id": equipment_id,
+                    "name": (equipment_name or "general").strip().lower(),
+                    "display_name": display_name,
+                    "dashboard_scope": (dashboard_scope or "enterprise").strip().lower(),
+                    "last_updated": now,
+                    "source_url": source_url,
+                },
+                "$addToSet": {
+                    "document_types_available": document_type,
+                    "filenames": filename,
+                },
+                "$inc": {
+                    "doc_count": 1,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+    else:
+        # Filename found: do a single update_one without $inc doc_count
+        await db[COLLECTION_NAME].update_one(
+            {"equipment_id": equipment_id},
+            {
+                "$set": {
+                    "equipment_id": equipment_id,
+                    "name": (equipment_name or "general").strip().lower(),
+                    "display_name": display_name,
+                    "dashboard_scope": (dashboard_scope or "enterprise").strip().lower(),
+                    "last_updated": now,
+                    "source_url": source_url,
+                },
+                "$addToSet": {
+                    "document_types_available": document_type,
+                },
+            },
+            upsert=True,
+        )
 
 
 async def list_equipment_by_scope(

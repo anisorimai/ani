@@ -162,21 +162,26 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production', 
     }
 
     const priorHistory = useChatStore.getState().conversations[convId]?.messages || [];
-    addMessage(convId, { role: 'user', content: text, type, attachments });
+    // Strip base64Data before storing — it is only needed for the in-flight WebSocket
+    // send below. The store, cache, and backend sync must never see it.
+    const storedAttachments = attachments
+      ? attachments.map(({ base64Data: _dropped, ...rest }) => rest)
+      : null;
+    addMessage(convId, { role: 'user', content: text, type, attachments: storedAttachments });
     setLoading(true);
 
     const streamId = Date.now().toString();
     streamHandleRef.current = streamMessage(
       text, convId,
       (token) => { if (useChatStore.getState().isLoading) startStreaming(streamId); appendToken(token, streamId); },
-      (finalMessage, doneMeta) => { finalizeStream(streamId, finalMessage, doneMeta?.pagination || null); streamHandleRef.current = null; },
+      (finalMessage, doneMeta) => { finalizeStream(streamId, finalMessage, doneMeta?.pagination || null, doneMeta?.citations || null); streamHandleRef.current = null; },
       (err) => {
         console.error('Stream error:', err);
         cancelStream(); setLoading(false);
         addMessage(convId, { role: 'assistant', content: `Sorry, something went wrong: ${err.message || 'Unknown error'}. Please try again.`, type: 'text', isError: true });
         streamHandleRef.current = null;
       },
-      priorHistory, page, dashboardContext
+      priorHistory, page, dashboardContext, attachments
     );
   }, [activeConversationId, createConversation, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream, removeLastAssistantMessage]);
 
@@ -252,7 +257,7 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production', 
     streamHandleRef.current = streamMessage(
       newContent, activeConversationId,
       (token) => { if (useChatStore.getState().isLoading) startStreaming(streamId); appendToken(token, streamId); },
-      (finalMessage) => { finalizeStream(streamId, finalMessage); streamHandleRef.current = null; },
+      (finalMessage, doneMeta) => { finalizeStream(streamId, finalMessage, doneMeta?.pagination || null, doneMeta?.citations || null); streamHandleRef.current = null; },
       (err) => {
         console.error('Stream error:', err); cancelStream(); setLoading(false);
         addMessage(activeConversationId, { role: 'assistant', content: `Sorry, something went wrong: ${err.message || 'Unknown error'}. Please try again.`, type: 'text', isError: true });

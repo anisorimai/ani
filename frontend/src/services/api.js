@@ -296,7 +296,7 @@ class _VoxaWebSocket {
     this._clearHandlers();
   }
 
-  async send(message, conversationId, history, page, onToken, onComplete, onError, dashboardContext = "") {
+  async send(message, conversationId, history, page, onToken, onComplete, onError, dashboardContext = "", attachments = null) {
     this._clearHandlers();
     this._onToken    = onToken;
     this._onComplete = onComplete;
@@ -312,11 +312,23 @@ class _VoxaWebSocket {
 
     this._requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const token = getAccessToken();
-    this._ws.send(JSON.stringify({
+
+    // Extract PDF attachments (those with base64Data) and send them separately
+    // so the backend can decode and extract text without touching the image path.
+    const pdfAttachments = (attachments || [])
+      .filter((a) => a.isPdf && a.base64Data)
+      .map((a) => ({ name: a.name, base64Data: a.base64Data }));
+
+    const payload = {
       token, message, conversation_id: conversationId, history, page,
       request_id: this._requestId,
       dashboard_context: dashboardContext,
-    }));
+    };
+    if (pdfAttachments.length > 0) {
+      payload.pdf_attachments = pdfAttachments;
+    }
+
+    this._ws.send(JSON.stringify(payload));
   }
 
   /** Call once after login to pre-open the socket before the first message. */
@@ -334,9 +346,9 @@ export function closeStream() {
   _ws.cancel();
 }
 
-export function streamMessage(message, conversationId, onToken, onComplete, onError, history = [], page = 1, dashboardContext = "") {
+export function streamMessage(message, conversationId, onToken, onComplete, onError, history = [], page = 1, dashboardContext = "", attachments = null) {
   _ws.cancel();
-  _ws.send(message, conversationId, history, page, onToken, onComplete, onError, dashboardContext);
+  _ws.send(message, conversationId, history, page, onToken, onComplete, onError, dashboardContext, attachments);
   return { close: () => _ws.cancel() };
 }
 

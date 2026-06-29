@@ -201,7 +201,7 @@ async def retrieve_all_user_chunks(
                 citation_map[fn_lower] = {
                     "filename": fn,
                     "equipment": metadata.get("equipment") or c.get("equipment") or "General",
-                    "source_url": metadata.get("source_url") or "",
+                    "source_url": metadata.get("source_url") or c.get("source_url") or "",
                     "document_type": metadata.get("document_type") or "manual",
                     "dashboard_scope": metadata.get("dashboard_scope") or "enterprise"
                 }
@@ -449,7 +449,7 @@ async def retrieve_chunks(
             citation_map[fn_lower] = {
                 "filename": fn,
                 "equipment": metadata.get("equipment") or c.get("equipment") or "General",
-                "source_url": metadata.get("source_url") or "",
+                "source_url": metadata.get("source_url") or c.get("source_url") or "",
                 "document_type": metadata.get("document_type") or "manual",
                 "dashboard_scope": metadata.get("dashboard_scope") or "enterprise"
             }

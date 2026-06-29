@@ -1,5 +1,5 @@
 """
-Intent classifier — routes every query into one of eight paths.
+Intent classifier — routes every query into one of nine paths.
 
 Paths
 -----
@@ -10,6 +10,8 @@ comparison          query explicitly comparing two time periods, entities, or da
 summary             broad overview, dashboard, multi-metric executive summary
 forecasting         predictions, projections, future trends, estimates
 data_query          specific data retrieval — the safe default for everything else
+equipment_listing   general inventory question: what equipment or documents exist in the system
+workflow_automation write-action requests the read-only system cannot fulfill
 
 One small LLM call; no DB round-trip.
 """
@@ -32,10 +34,11 @@ INTENT_LABELS = frozenset({
     "summary",
     "forecasting",
     "data_query",
+    "equipment_listing",
 })
 
 _SYSTEM = """\
-Classify the user's query into EXACTLY ONE of these eight intents.
+Classify the user's query into EXACTLY ONE of these nine intents.
 Reply with ONLY the intent label — nothing else.
 
 conversational      : greeting, small talk, thanks, acknowledgement, "how are you", "ok", "bye"
@@ -49,6 +52,13 @@ domain_knowledge    : conceptual or educational questions answered from general 
                         (these ask about OUR specific records, not general knowledge)
                       • "Show me details about [specific named entity]" → data_query
                       • "What medicines/drugs/machinery/suppliers/hospitals do we have?" → data_query
+equipment_listing   : general inventory question about what equipment or documents exist in the
+                      system, with no specific topic or question being asked.
+                      Examples: "what equipment is available", "show me all docs", "what's indexed here",
+                      "what documents do we have in the system", "list all equipment",
+                      "what can I ask about", "what files are uploaded", "show available equipment".
+                      CRITICAL — only use this when the user wants a general inventory list, NOT when
+                      they are asking a specific question about a piece of equipment or document.
 workflow_automation : requests to perform a WRITE action — book, create, schedule, add, update,
                       modify, edit, delete, remove, cancel, assign, register, enroll, submit,
                       export, download, generate a report/alert/file, send, or set up a reminder.
@@ -105,6 +115,22 @@ _SUMMARY_RE = re.compile(
 _FORECASTING_RE = re.compile(
     r"\b(forecast|predict|projection|expected|next\s+(month|quarter|year|week)|"
     r"will\s+there\s+be|future\s+trend|estimated|anticipate|upcoming)\b",
+    re.I,
+)
+
+# Matches general inventory questions: "what equipment/documents are available/indexed/here"
+# with no specific topic — pure listing intent.
+# Must run BEFORE data_query so it doesn't silently become a record retrieval.
+_EQUIPMENT_LISTING_RE = re.compile(
+    r"("
+    r"what\s+(equipment|documents?|docs?|files?)\s+(are\s+)?(available|indexed|here|in\s+(the\s+)?system)"
+    r"|show\s+(me\s+)?(all\s+)?(equipment|documents?|docs?|files?)"
+    r"|list\s+(all\s+)?(equipment|documents?|docs?|files?|available)"
+    r"|what\s+(is|'?s)\s+(available|indexed)\s+(here|in\s+(the\s+)?system)?"
+    r"|what\s+can\s+i\s+(ask|query)\s+(about|here)?"
+    r"|what\s+(documents?|docs?|files?|equipment)\s+do\s+we\s+have\s+(in\s+(the\s+)?system)?"
+    r"|what\s+'?s\s+(indexed|uploaded|in\s+(the\s+)?system)"
+    r")",
     re.I,
 )
 
@@ -184,6 +210,11 @@ async def classify_intent(query: str, llm: LLMClient) -> str:
     if _DOMAIN_KNOWLEDGE_RE.search(q):
         logger.debug("Intent fast-path: domain_knowledge | query=%r", q[:60])
         return "domain_knowledge"
+
+    # Fast-path: equipment / document listing
+    if _EQUIPMENT_LISTING_RE.search(q):
+        logger.debug("Intent fast-path: equipment_listing | query=%r", q[:60])
+        return "equipment_listing"
 
     # LLM classification for ambiguous cases
     try:

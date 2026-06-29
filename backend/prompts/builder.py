@@ -137,6 +137,18 @@ def build_system_prompt(ctx: PromptContext) -> str:
             parts.append(f"--- RETRIEVAL CONTEXT ---\n{preamble}")
         parts.append(f"--- DATA CONTEXT ---\n{ctx.data_context}\n--- END DATA CONTEXT ---")
 
+        # For domain_knowledge queries, add a strict grounding guard so the LLM
+        # does not fill gaps from training knowledge when the context is insufficient.
+        if ctx.intent == "domain_knowledge":
+            parts.append(
+                "--- KNOWLEDGE BASE GROUNDING RULE ---\n"
+                "You must only answer using the provided knowledge base context above. "
+                "If the context does not contain enough information to answer the question, "
+                "respond with: 'I don't have information about this in the current knowledge "
+                "base. Please upload the relevant document through the Knowledge Repository.' "
+                "Do not use your training knowledge to fill gaps."
+            )
+
     suffix = BY_INTENT.get(ctx.intent, "")
     if suffix:
         parts.append(suffix)

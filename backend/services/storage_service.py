@@ -158,9 +158,8 @@ def verify_storage() -> None:
         logger.info("Supabase storage verified and ready")
         _storage_service = service
     except Exception as exc:
-        logger.warning("Supabase storage unavailable, falling back to local storage: %s", exc)
-        _storage_service = LocalStorageService(base_dir=DATA_DIR / "uploads")
-        logger.info("Local storage fallback active")
+        logger.error("Supabase storage verification failed: %s", exc)
+        raise exc
 
 
 def get_storage_service():
@@ -169,17 +168,14 @@ def get_storage_service():
         return _storage_service
 
     if STORAGE_BACKEND == "supabase":
-        try:
-            _storage_service = SupabaseStorageService(
-                supabase_url=SUPABASE_URL,
-                service_role_key=SUPABASE_SERVICE_ROLE_KEY,
-                bucket=SUPABASE_STORAGE_BUCKET,
-                public_base_url=SUPABASE_PUBLIC_BASE_URL,
-            )
-            logger.info("Storage backend: supabase")
-            return _storage_service
-        except Exception as exc:
-            logger.warning(f"Supabase storage failed, falling back to local: {exc}")
+        _storage_service = SupabaseStorageService(
+            supabase_url=SUPABASE_URL,
+            service_role_key=SUPABASE_SERVICE_ROLE_KEY,
+            bucket=SUPABASE_STORAGE_BUCKET,
+            public_base_url=SUPABASE_PUBLIC_BASE_URL,
+        )
+        logger.info("Storage backend: supabase")
+        return _storage_service
 
     _storage_service = LocalStorageService(base_dir=DATA_DIR / "uploads")
     logger.info("Storage backend: local")
