@@ -67,6 +67,7 @@ def build_analytics_context(analytics_results: dict[str, Any]) -> str:
     Each collection's computed metrics are listed clearly.
     """
     sections: list[str] = []
+    _OP_LABELS = {"avg": "Average", "sum": "Total", "max": "Highest", "min": "Lowest"}
 
     for collection, data in analytics_results.items():
         applied_filter = data.get("filter") or {}
@@ -83,14 +84,58 @@ def build_analytics_context(analytics_results: dict[str, Any]) -> str:
                 if total != data["count"]:
                     lines.append(f"Total in collection (unfiltered): {total:,}")
 
-        if "group_by" in data:
-            gb = data["group_by"]
-            field_label = gb['field'].replace("_", " ").title()
-            lines.append(f"Breakdown by {field_label}:")
-            for item in gb["counts"][:100]:
-                lines.append(f"  {item['value']}: {item['count']:,}")
+        # --- Combined per-group breakdown with metric values ---
+        # Rendered BEFORE the global aggregates so the LLM reads per-group figures
+        # first and doesn't confuse a global average with a per-group average.
+        if "group_by_metrics" in data:
+            gbm = data["group_by_metrics"]
+            field_label = gbm["field"].replace("_", " ").title()
+            op_keys: list[str] = gbm.get("ops", [])
 
-        _OP_LABELS = {"avg": "Average", "sum": "Total", "max": "Highest", "min": "Lowest"}
+            # Build a human-readable header describing what each column contains
+            col_descriptions: list[str] = []
+            for key in op_keys:
+                parts = key.split("_", 1)
+                if len(parts) == 2:
+                    op_lbl = _OP_LABELS.get(parts[0], parts[0].upper())
+                    fld_lbl = parts[1].replace("_", " ").title()
+                    col_descriptions.append(f"{op_lbl} {fld_lbl}")
+            header_cols = ", ".join(col_descriptions) if col_descriptions else "metric values"
+            lines.append(f"Breakdown by {field_label} ({header_cols} per group):")
+
+            lines.append(
+                "  (NOTE: 'records' = number of DB documents in that group, "
+                "NOT the metric value. Read the metric columns for the actual figures.)"
+            )
+            for row in gbm["rows"][:100]:
+                row_parts: list[str] = [f"{row['value']}: {row['count']:,} records"]
+                for key in op_keys:
+                    val = row.get(key, None)  # None when key absent or explicitly null
+                    parts = key.split("_", 1)
+                    op_lbl = _OP_LABELS.get(parts[0], parts[0].upper()) if len(parts) == 2 else key
+                    fld_lbl = parts[1].replace("_", " ").title() if len(parts) == 2 else ""
+                    if val is None:
+                        row_parts.append(f"{op_lbl} {fld_lbl} = N/A (no data)")
+                    elif isinstance(val, float):
+                        row_parts.append(f"{op_lbl} {fld_lbl} = {val:,.2f}")
+                    elif isinstance(val, int):
+                        row_parts.append(f"{op_lbl} {fld_lbl} = {val:,}")
+                    else:
+                        row_parts.append(f"{op_lbl} {fld_lbl} = {val}")
+                lines.append("  " + " | ".join(row_parts))
+
+        # --- Pure count breakdown (no metric, only when group_by_metrics is absent) ---
+        elif "group_by" in data:
+            gb = data["group_by"]
+            field_label = gb["field"].replace("_", " ").title()
+            lines.append(f"Breakdown by {field_label} (record count per group):")
+            for item in gb["counts"][:100]:
+                lines.append(f"  {item['value']}: {item['count']:,} records")
+
+        # --- Global / overall numeric aggregates ---
+        # Labeled as "Overall" when a per-group breakdown already exists so the
+        # LLM does not mistake the global figure for a per-group value.
+        has_group_breakdown = "group_by_metrics" in data or "group_by" in data
         for key, val in data.items():
             if key.startswith(("avg_", "sum_", "max_", "min_")):
                 op, field = key.split("_", 1)
@@ -102,7 +147,20 @@ def build_analytics_context(analytics_results: dict[str, Any]) -> str:
                     val_str = f"{val:,}"
                 else:
                     val_str = str(val)
-                lines.append(f"{op_label} {field_label}: {val_str}")
+                prefix = "Overall " if has_group_breakdown else ""
+                lines.append(f"{prefix}{op_label} {field_label}: {val_str}")
+
+        for metric in data.get("derived_metrics", []) or []:
+            label = metric.get("label", "Derived Metric")
+            pct = metric.get("percentage")
+            matched = metric.get("matched_count")
+            total = metric.get("total_count")
+            field = metric.get("field")
+            if isinstance(pct, (int, float)) and isinstance(matched, int) and isinstance(total, int):
+                field_note = f" from {field}" if field else ""
+                lines.append(
+                    f"{label}: {pct:,.2f}% ({matched:,} of {total:,} records{field_note})"
+                )
 
         for rec_key in ("top_records", "bottom_records"):
             if rec_key in data and data[rec_key]:
