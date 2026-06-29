@@ -536,36 +536,6 @@ class QueryOrchestrator:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    # ── Equipment / document listing intent classifier ────────────────────────
-
-    async def _classify_listing_intent(self, query: str) -> str:
-        """
-        Lightweight LLM call that returns either "equipment_listing" or "rag_query".
-        "equipment_listing" — the user wants to see what equipment or documents are
-                              available/indexed in the system.
-        "rag_query"        — the user is asking a specific question and expects an answer.
-        Returns "rag_query" on any error so the normal pipeline always runs as a fallback.
-        """
-        system = (
-            "You are a routing classifier. "
-            "Reply with ONLY one of these two tokens — no punctuation, no explanation:\n"
-            "  equipment_listing  — the user wants to see what equipment or documents "
-            "are available, indexed, or present in the system.\n"
-            "  rag_query          — the user is asking a specific question and expects "
-            "a direct answer from the documents."
-        )
-        try:
-            raw = self._llm.complete([
-                {"role": "system", "content": system},
-                {"role": "user", "content": query},
-            ])
-            token = raw.strip().lower().split()[0] if raw.strip() else "rag_query"
-            if token == "equipment_listing":
-                return "equipment_listing"
-        except Exception as exc:
-            logger.warning("[LISTING_CLASSIFY] LLM call failed: %s — defaulting to rag_query", exc)
-        return "rag_query"
-
     # ── Shared equipment listing handler ──────────────────────────────────────
 
     async def _handle_equipment_listing(
@@ -713,15 +683,6 @@ class QueryOrchestrator:
 
         timings: dict[str, float] = {}
 
-        # Equipment / document listing detection via lightweight LLM classification
-        t_list = time.perf_counter()
-        listing_intent = await self._classify_listing_intent(query)
-        timings["listing_classify_ms"] = _ms(t_list)
-        if listing_intent == "equipment_listing":
-            return await self._handle_equipment_listing(
-                query, session_id, dashboard_context, pipeline_start, timings
-            )
-
         # Stage 0: reference resolution — resolve anaphoric references from session context.
         # Only applied to genuine follow-ups; standalone questions reset the topic
         # context so stale entities/time ranges never leak into them.
@@ -752,6 +713,12 @@ class QueryOrchestrator:
             "[STAGE 2] intent=%s session=%s elapsed_ms=%.0f",
             intent, session_id, timings["intent_classification_ms"],
         )
+
+        # ── Equipment listing — short-circuit before DB pipeline ──────────────
+        if intent == "equipment_listing":
+            return await self._handle_equipment_listing(
+                query, session_id, dashboard_context, pipeline_start, timings
+            )
 
         # ── Fast paths (no DB) ────────────────────────────────────────────────
         if intent in ("conversational", "domain_knowledge", "workflow_automation"):
@@ -843,6 +810,7 @@ class QueryOrchestrator:
         user_id: str = "",
         org_id: str = "",
         dashboard_context: str = "",
+        pdf_attachments: Optional[list[dict]] = None,
     ) -> AsyncGenerator[str, None]:
         """Streaming pipeline — yields LLM tokens as they arrive."""
         await self._ensure_ready()
@@ -851,13 +819,112 @@ class QueryOrchestrator:
             yield "I didn't receive a question. What would you like to know about your data?"
             return
 
-        # Stage 0: reference resolution — follow-ups only; standalone queries
+        # ── Stage 0: reference resolution — follow-ups only; standalone queries
         # reset the topic context (see process() for rationale)
         pipeline_start = time.perf_counter()
 
-        # Equipment / document listing detection via lightweight LLM classification
-        listing_intent = await self._classify_listing_intent(query)
-        if listing_intent == "equipment_listing":
+        # ── PDF attachment handling ───────────────────────────────────────────
+        # Decode, extract text, and chunk each PDF for this session only.
+        # Nothing is written to MongoDB, Supabase, or any persistent store.
+        session_pdf_chunks: list[str] = []
+        if pdf_attachments:
+            import base64
+            import fitz  # PyMuPDF
+            from rag.chunker import chunk_text
+            from rag.extractor import ChunkStrategy
+            from config.settings import RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP
+
+            for pdf in pdf_attachments:
+                raw_b64: str = pdf.get("base64Data", "")
+                if not raw_b64:
+                    continue
+                # Strip the data-URL prefix (data:application/pdf;base64,<data>)
+                if "," in raw_b64:
+                    raw_b64 = raw_b64.split(",", 1)[1]
+                try:
+                    pdf_bytes = base64.b64decode(raw_b64)
+                    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                    page_count = doc.page_count
+                    full_text = "\n\n".join(page_obj.get_text() for page_obj in doc)
+                    doc.close()
+                    chunks = chunk_text(
+                        full_text,
+                        strategy=ChunkStrategy.SECTION,
+                        chunk_size=RAG_CHUNK_SIZE,
+                        overlap=RAG_CHUNK_OVERLAP,
+                    )
+                    session_pdf_chunks.extend(chunks)
+                    logger.info(
+                        "[PDF_ATTACH] '%s' → %d pages, %d chunks (session-only)",
+                        pdf.get("name", "unknown"), page_count, len(chunks),
+                    )
+                except Exception as exc:
+                    logger.warning("[PDF_ATTACH] failed to extract '%s': %s", pdf.get("name", "?"), exc)
+
+        # Build a single context block from all PDF chunks to prepend into system prompts
+        _pdf_context_block = ""
+        _pdf_citations: list[dict] = []
+        _PDF_NOTE = (
+            "\n\n*Note: This answer was based on your attached document. "
+            "To ask follow-up questions, please re-attach the PDF.*"
+        )
+        if session_pdf_chunks:
+            _pdf_ctx_text = "\n\n".join(session_pdf_chunks)
+            _pdf_context_block = (
+                "--- ATTACHED DOCUMENT CONTEXT (session-only, not persisted) ---\n"
+                f"{_pdf_ctx_text}\n"
+                "--- END ATTACHED DOCUMENT CONTEXT ---\n\n"
+            )
+            # Build citation entries from the original PDF filenames so citation
+            # pills reflect the actual source used to answer the query.
+            _pdf_citations = [
+                {
+                    "filename": pdf.get("name", "attachment.pdf"),
+                    "source_url": "",
+                    "equipment_name": "",
+                    "document_type": "Attached Document",
+                }
+                for pdf in (pdf_attachments or [])
+                if pdf.get("base64Data") or pdf.get("name")
+            ]
+            logger.info(
+                "[PDF_ATTACH] context block ready: %d chunks, %d citation(s)",
+                len(session_pdf_chunks), len(_pdf_citations),
+            )
+
+        _sess_ctx = self._ctx_store.get(session_id) if session_id else AnalyticalContext()
+        if is_followup_query(query, _sess_ctx):
+            resolved_query = resolve_references(query, _sess_ctx)
+        else:
+            if session_id:
+                self._ctx_store.reset_topic(session_id)
+            resolved_query = query
+        effective_history = conversation_history or []
+
+        # Stage 1-2: Query normalization + intent classification.
+        # When PDF attachments are present, skip classification entirely and use
+        # data_query so the PDF context drives the response without the overhead
+        # of a second LLM round-trip.
+        t12 = time.perf_counter()
+        if _pdf_context_block:
+            query_meta = await normalize_query(resolved_query, self._llm)
+            intent = "data_query"
+            logger.info(
+                "[STAGE 1-2][STREAM] PDF present — normalize_ms=%.0f intent=data_query (forced)",
+                _ms(t12),
+            )
+        else:
+            query_meta, intent = await asyncio.gather(
+                normalize_query(resolved_query, self._llm),
+                classify_intent(resolved_query, self._llm),
+            )
+            logger.info(
+                "[STAGE 1-2][STREAM] normalize+intent_ms=%.0f intent=%s metrics=%s",
+                _ms(t12), intent, query_meta.metrics,
+            )
+
+        # ── Equipment listing — short-circuit before DB pipeline ──────────────
+        if intent == "equipment_listing":
             result = await self._handle_equipment_listing(
                 query, session_id, dashboard_context, pipeline_start, {}
             )
@@ -871,46 +938,31 @@ class QueryOrchestrator:
                 "source": "database",
                 "confidence": 1.0,
                 "collections_used": ["rag_documents"],
-                "routing": "list_query",
+                "routing": "equipment_listing",
                 "citations": [],
             }
             return
 
-        _sess_ctx = self._ctx_store.get(session_id) if session_id else AnalyticalContext()
-        if is_followup_query(query, _sess_ctx):
-            resolved_query = resolve_references(query, _sess_ctx)
-        else:
-            if session_id:
-                self._ctx_store.reset_topic(session_id)
-            resolved_query = query
-        effective_history = conversation_history or []
-
-        # Stage 1: Query normalization (run with intent classification in parallel)
-        t12 = time.perf_counter()
-        query_meta, intent = await asyncio.gather(
-            normalize_query(resolved_query, self._llm),
-            classify_intent(resolved_query, self._llm),
-        )
-        logger.info(
-            "[STAGE 1-2][STREAM] normalize+intent_ms=%.0f intent=%s metrics=%s",
-            _ms(t12), intent, query_meta.metrics,
-        )
-
         # Fast paths
         if intent in ("conversational", "domain_knowledge", "workflow_automation"):
-            # Always check RAG before taking the fast path — the user may have
+            # When a PDF is attached, use it exclusively — skip RAG retrieval entirely.
+            # Otherwise always check RAG before the fast path in case the user has
             # uploaded documents that answer this question directly.
-            _fp_vector = await get_query_embedding(resolved_query) if user_id else None
-            rag_chunks_fp, source_filenames_fp, citation_map_fp = await self._fetch_rag_chunks(
-                resolved_query, _fp_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent
-            )
-            if rag_chunks_fp:
-                rag_text = build_rag_context(rag_chunks_fp)
+            if _pdf_context_block:
+                rag_chunks_fp, source_filenames_fp, citation_map_fp = [], [], {}
+            else:
+                _fp_vector = await get_query_embedding(resolved_query) if user_id else None
+                rag_chunks_fp, source_filenames_fp, citation_map_fp = await self._fetch_rag_chunks(
+                    resolved_query, _fp_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent
+                )
+            if rag_chunks_fp or _pdf_context_block:
+                rag_text = build_rag_context(rag_chunks_fp) if rag_chunks_fp else ""
+                combined_kb = _pdf_context_block + rag_text if _pdf_context_block else rag_text
                 system = (
                     "You are VOXA, an AI Assistant. The user has uploaded knowledge documents "
                     "that are relevant to this question.\n\n"
                     "--- KNOWLEDGE BASE ---\n"
-                    f"{rag_text}\n"
+                    f"{combined_kb}\n"
                     "--- END KNOWLEDGE BASE ---\n\n"
                     "Answer the user's question based on the knowledge base above. "
                     "If the answer is not present in the documents, say so clearly."
@@ -928,16 +980,19 @@ class QueryOrchestrator:
             async for token in self._llm.stream(msgs):
                 yield token
                 full.append(token)
+            if _pdf_context_block:
+                yield _PDF_NOTE
+                full.append(_PDF_NOTE)
             response_text_fp = "".join(full)
-            source_fp = "rag_document" if rag_chunks_fp else "llm"
+            source_fp = "rag_document" if (rag_chunks_fp or _pdf_context_block) else "llm"
             self._update_context(session_id, query, response_text_fp, intent, [], None)
             self._last_stream_meta[session_id] = {
                 "intent": intent,
                 "source": source_fp,
                 "confidence": 1.0,
                 "collections_used": [],
-                "routing": "fast_path_rag" if rag_chunks_fp else "fast_path",
-                "citations": self._extract_citations(citation_map_fp, source_filenames_fp) if rag_chunks_fp else [],
+                "routing": "fast_path_rag" if (rag_chunks_fp or _pdf_context_block) else "fast_path",
+                "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map_fp, source_filenames_fp),
             }
             logger.info(
                 "[ORCHESTRATOR][STREAM] done intent=%s source=%s elapsed_ms=%.0f",
@@ -966,10 +1021,17 @@ class QueryOrchestrator:
             _ms(t4), combined_base, expanded_kw, "yes" if query_vector else "no",
         )
 
-        # Stage 5b: RAG retrieval — fired now, runs in parallel with Stage 5a below
-        rag_task = asyncio.ensure_future(
-            self._fetch_rag_chunks(resolved_query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
-        )
+        # Stage 5b: RAG retrieval — skipped when a PDF attachment provides context,
+        # otherwise fired now to run in parallel with Stage 5a below.
+        if _pdf_context_block:
+            # Resolve immediately with empty results; no retriever call needed.
+            async def _empty_rag_coro() -> tuple[list, list, dict]:
+                return [], [], {}
+            rag_task = asyncio.ensure_future(_empty_rag_coro())
+        else:
+            rag_task = asyncio.ensure_future(
+                self._fetch_rag_chunks(resolved_query, query_vector, user_id, RAG_TOP_K, org_id=org_id, intent=intent)
+            )
 
         # Stage 5: Route by intent
         if intent in ("analytics", "comparison"):
@@ -996,13 +1058,14 @@ class QueryOrchestrator:
             if not analytics_results or all(not v for v in analytics_results.values()):
                 _rag_conf = compute_rag_confidence(rag_chunks)
                 _rag_relevant = rag_chunks and _rag_conf >= RAG_CONFIDENCE_THRESHOLD
-                if _rag_relevant:
-                    rag_text = build_rag_context(rag_chunks)
+                if _rag_relevant or _pdf_context_block:
+                    rag_text = build_rag_context(rag_chunks) if _rag_relevant else ""
+                    combined_kb = _pdf_context_block + rag_text if _pdf_context_block else rag_text
                     _nd_system = (
                         "You are VOXA, an AI Assistant. No database records were found for this query, "
                         "but the user has uploaded knowledge documents that may contain the answer.\n\n"
                         "--- KNOWLEDGE BASE ---\n"
-                        f"{rag_text}\n"
+                        f"{combined_kb}\n"
                         "--- END KNOWLEDGE BASE ---\n\n"
                         "Answer the user's question based on the knowledge base above. "
                         "If the answer is not present, say so clearly."
@@ -1019,14 +1082,17 @@ class QueryOrchestrator:
                 async for token in self._llm.stream(msgs):
                     yield token
                     full.append(token)
+                if _pdf_context_block:
+                    yield _PDF_NOTE
+                    full.append(_PDF_NOTE)
                 _nd_text = "".join(full)
                 self._update_context(session_id, query, _nd_text, intent, [], None)
                 self._last_stream_meta[session_id] = {
                     "intent": intent, "source": _nd_source,
                     "confidence": _rag_conf if _rag_relevant else 0.0,
                     "collections_used": [],
-                    "routing": "rag_fallback" if _rag_relevant else "no_data_fallback",
-                    "citations": self._extract_citations(citation_map, source_filenames) if _rag_relevant else [],
+                    "routing": "rag_fallback" if (_rag_relevant or _pdf_context_block) else "no_data_fallback",
+                    "citations": _pdf_citations if _pdf_context_block else (self._extract_citations(citation_map, source_filenames) if _rag_relevant else []),
                 }
                 return
 
@@ -1062,6 +1128,8 @@ class QueryOrchestrator:
             rag_text = build_rag_context(rag_chunks)
             if rag_text:
                 context_text = rag_text + "\n\n" + context_text
+            if _pdf_context_block:
+                context_text = _pdf_context_block + context_text
             system_content = self._build_intent_system(
                 context_text, intent, False,
                 query_meta=query_meta,
@@ -1075,12 +1143,15 @@ class QueryOrchestrator:
             async for token in self._llm.stream(msgs):
                 yield token
                 full.append(token)
+            if _pdf_context_block:
+                yield _PDF_NOTE
+                full.append(_PDF_NOTE)
             response_text = "".join(full)
             self._update_context(session_id, query, response_text, intent, selected, query_meta)
             self._last_stream_meta[session_id] = {
                 "intent": intent, "source": "mongodb_aggregation", "confidence": 1.0,
                 "collections_used": selected, "routing": "analytics",
-                "citations": self._extract_citations(citation_map, source_filenames),
+                "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map, source_filenames),
             }
             return
 
@@ -1099,7 +1170,7 @@ class QueryOrchestrator:
                 _ms(t5), total_records, total_pages, len(rag_chunks),
             )
 
-            if not fetched and not rag_chunks:
+            if not fetched and not rag_chunks and not _pdf_context_block:
                 _fb_full: list[str] = []
                 try:
                     async for _tok in self._llm.stream([
@@ -1130,6 +1201,9 @@ class QueryOrchestrator:
             else:
                 context_text = build_context(fetched, page=page, page_size=DATA_QUERY_PAGE_SIZE)
 
+            if _pdf_context_block:
+                context_text = _pdf_context_block + context_text
+
             low_conf = ctx_source == "db_only" and validation.recommendation == "low_confidence"
             system_content = self._build_intent_system(
                 context_text, intent, low_conf,
@@ -1144,6 +1218,9 @@ class QueryOrchestrator:
             async for token in self._llm.stream(msgs):
                 yield token
                 full.append(token)
+            if _pdf_context_block:
+                yield _PDF_NOTE
+                full.append(_PDF_NOTE)
             response_text = "".join(full)
             collections_used = [] if ctx_source == "rag_only" else list(fetched.keys())
             self._update_context(session_id, query, response_text, intent, collections_used, query_meta)
@@ -1153,7 +1230,7 @@ class QueryOrchestrator:
                 "confidence": 1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
                 "collections_used": collections_used,
                 "routing": f"data_query_{ctx_source}",
-                "citations": self._extract_citations(citation_map, source_filenames),
+                "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map, source_filenames),
                 "pagination": {
                     "total_records": 0 if ctx_source == "rag_only" else total_records,
                     "page": page,
@@ -1201,7 +1278,7 @@ class QueryOrchestrator:
         )
 
         validation = validate_retrieval(resolved_query, fetched, bool(query_vector), query_meta)
-        if validation.recommendation == "no_data" and not rag_chunks:
+        if validation.recommendation == "no_data" and not rag_chunks and not _pdf_context_block:
             _fb_full: list[str] = []
             try:
                 async for _tok in self._llm.stream([
@@ -1238,6 +1315,9 @@ class QueryOrchestrator:
         else:
             context_text = _build_stream_db_ctx(fetched)
 
+        if _pdf_context_block:
+            context_text = _pdf_context_block + context_text
+
         low_conf = ctx_source == "db_only" and validation.recommendation == "low_confidence"
         system_content = self._build_intent_system(
             context_text, intent, low_conf,
@@ -1253,6 +1333,9 @@ class QueryOrchestrator:
         async for token in self._llm.stream(msgs):
             yield token
             full.append(token)
+        if _pdf_context_block:
+            yield _PDF_NOTE
+            full.append(_PDF_NOTE)
         response_text = "".join(full)
         self._update_context(session_id, query, response_text, intent, collections_used, query_meta)
         self._last_stream_meta[session_id] = {
@@ -1261,7 +1344,7 @@ class QueryOrchestrator:
             "confidence": 1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
             "collections_used": collections_used,
             "routing": f"sample_{ctx_source}",
-            "citations": self._extract_citations(citation_map, source_filenames),
+            "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map, source_filenames),
         }
 
     # -- DB pipeline (non-streaming) -------------------------------------------

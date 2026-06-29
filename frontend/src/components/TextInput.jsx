@@ -53,6 +53,12 @@ export default function TextInput({ onSend, disabled = false, onFocus, onBlur })
           setAttachments((prev) => [...prev, { ...base, url: ev.target.result }]);
         };
         reader.readAsDataURL(file);
+      } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          setAttachments((prev) => [...prev, { ...base, isPdf: true, base64Data: ev.target.result }]);
+        };
+        reader.readAsDataURL(file);
       } else {
         setAttachments((prev) => [...prev, base]);
       }

@@ -162,7 +162,12 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production', 
     }
 
     const priorHistory = useChatStore.getState().conversations[convId]?.messages || [];
-    addMessage(convId, { role: 'user', content: text, type, attachments });
+    // Strip base64Data before storing — it is only needed for the in-flight WebSocket
+    // send below. The store, cache, and backend sync must never see it.
+    const storedAttachments = attachments
+      ? attachments.map(({ base64Data: _dropped, ...rest }) => rest)
+      : null;
+    addMessage(convId, { role: 'user', content: text, type, attachments: storedAttachments });
     setLoading(true);
 
     const streamId = Date.now().toString();
@@ -176,7 +181,7 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production', 
         addMessage(convId, { role: 'assistant', content: `Sorry, something went wrong: ${err.message || 'Unknown error'}. Please try again.`, type: 'text', isError: true });
         streamHandleRef.current = null;
       },
-      priorHistory, page, dashboardContext
+      priorHistory, page, dashboardContext, attachments
     );
   }, [activeConversationId, createConversation, addMessage, setLoading, startStreaming, appendToken, finalizeStream, cancelStream, handleCancelStream, removeLastAssistantMessage]);
 

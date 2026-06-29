@@ -35,6 +35,13 @@ function createMessage({ role, content, type, isError, pagination = null, attach
     throw new Error(`Invalid message type: "${type}". Must be "text" or "voice".`);
   }
 
+  // Strip base64Data from PDF attachments before storing — it is only needed
+  // in-flight for the WebSocket send and must never reach the store, cache, or
+  // backend sync.
+  const safeAttachments = attachments
+    ? attachments.map(({ base64Data: _dropped, ...rest }) => rest)
+    : null;
+
   return {
     id: generateMsgId(),
     role,
@@ -45,7 +52,7 @@ function createMessage({ role, content, type, isError, pagination = null, attach
     parentId: null,
     createdAt: Date.now(),
     pagination: pagination || null,
-    attachments: attachments || null,
+    attachments: safeAttachments,
     citations: citations || null,
   };
 }
