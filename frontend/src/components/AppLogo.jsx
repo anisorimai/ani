@@ -1,8 +1,8 @@
 import React from 'react';
 
-const LOGO_SRC = '/Blue-and-Green-Modern-Medical-Logo-2-scaled-removebg-preview.png';
+const LOGO_SRC = '/ani_pharma_logo.png';
 
-export default function AppLogo({ size = 130, width, height, className = '', alt = 'AniCare Vox logo' }) {
+export default function AppLogo({ size = 130, width, height, className = '', alt = 'ANI Pharmaceuticals logo' }) {
   const finalWidth = width ?? size;
   const finalHeight = height ?? 'auto';
   return (

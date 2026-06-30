@@ -1206,7 +1206,7 @@ class QueryOrchestrator:
             self._last_stream_meta[session_id] = {
                 "intent": intent, "source": "mongodb_aggregation", "confidence": 1.0,
                 "collections_used": selected, "routing": "analytics",
-                "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map, source_filenames),
+                "citations": _pdf_citations if _pdf_context_block else [],
             }
             return
 
@@ -1286,7 +1286,7 @@ class QueryOrchestrator:
                 "confidence": 1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
                 "collections_used": collections_used,
                 "routing": f"data_query_{ctx_source}",
-                "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map, source_filenames),
+                "citations": _pdf_citations if _pdf_context_block else (self._extract_citations(citation_map, source_filenames) if ctx_source in ("rag_only", "merged") else []),
                 "pagination": {
                     "total_records": 0 if ctx_source == "rag_only" else total_records,
                     "page": page,
@@ -1401,7 +1401,7 @@ class QueryOrchestrator:
             "confidence": 1.0 if ctx_source in ("rag_only", "merged") else validation.confidence,
             "collections_used": collections_used,
             "routing": f"sample_{ctx_source}",
-            "citations": _pdf_citations if _pdf_context_block else self._extract_citations(citation_map, source_filenames),
+            "citations": _pdf_citations if _pdf_context_block else (self._extract_citations(citation_map, source_filenames) if ctx_source in ("rag_only", "merged") else []),
         }
 
     # -- DB pipeline (non-streaming) -------------------------------------------

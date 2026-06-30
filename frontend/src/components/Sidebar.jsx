@@ -181,11 +181,11 @@ export default function Sidebar({ isOpen, onClose, onNavigateToChat }) {
       >
         {/* ── Header: logo + close button ── */}
         <div
-          className="flex items-center justify-between px-4 py-3.5 flex-shrink-0"
+          className="flex items-center justify-between px-4 h-20 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--sb-brd)' }}
         >
           <div className="flex items-center gap-2">
-            <AppLogo size={85} className="rounded-sm" />
+            <AppLogo size={60} className="rounded-sm" />
             <span
               className="text-[0.875rem] font-semibold tracking-tight"
               style={{ color: 'var(--sb-txt)' }}
