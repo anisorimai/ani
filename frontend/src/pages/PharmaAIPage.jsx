@@ -198,9 +198,9 @@ export default function PharmaAIPage() {
 
         {/* Desktop left sidebar */}
         <aside className="hidden md:flex flex-col flex-shrink-0 w-56 border-r border-[var(--brd)] bg-[var(--surf)]">
-          <div className="px-4 py-4 border-b border-[var(--brd)] flex-shrink-0 flex items-center justify-center">
+          <div className="px-4 border-b border-[var(--brd)] flex-shrink-0 flex items-center justify-center" style={{ height: 52 }}>
             <div className="logo-badge">
-              <AppLogo size={190} />
+              <AppLogo size={110} />
             </div>
           </div>
 
