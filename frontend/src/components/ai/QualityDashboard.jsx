@@ -206,12 +206,8 @@ export default function QualityDashboard() {
           </div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>Quality Assurance</div>
-            <div style={{ fontSize: 10.5, color: 'var(--txt3)' }}>QC & Compliance Dashboard</div>
+            <div style={{ fontSize: 10.5, color: 'var(--txt3)', marginTop: 1 }}>QC & Compliance Dashboard · {summary.latestDate}</div>
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 10, color: 'var(--txt3)' }}>{summary.latestDate}</span>
-          <div style={{ fontSize: 10.5, color: T.green.text, background: T.green.light, padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>● Live</div>
         </div>
       </div>
 

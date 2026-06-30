@@ -302,19 +302,19 @@ export default function Landing() {
 
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-50 border border-cyan-200 mb-8">
             <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
-            <span className="text-xs font-bold text-cyan-600 tracking-wide">AI-Powered Health Care Operations</span>
+            <span className="text-xs font-bold text-cyan-600 tracking-wide">AI-Powered Pharmaceutical Operations</span>
           </div>
 
           <h2 className="text-5xl xl:text-6xl font-black leading-[1.1] tracking-tight mb-6">
-            <span className="text-gray-900">The Future of</span><br />
+            <span className="text-gray-900">Pharmaceutical Intelligence,</span><br />
             <span className="bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-400 bg-clip-text text-transparent">
-              Voice Intelligence
+              Redefined
             </span>
           </h2>
 
           <p className="text-base text-gray-500 leading-relaxed font-light max-w-md">
-            AI-powered healthcare voice assistant for patient records, medical
-            inventory, and CRM operations — all through natural conversation.
+            AI-powered assistant for batch records, quality inspections, equipment
+            management, and inventory operations — built for pharmaceutical manufacturing.
           </p>
 
           <div className="flex items-center gap-2 mt-10">

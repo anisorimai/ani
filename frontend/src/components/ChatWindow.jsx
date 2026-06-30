@@ -321,18 +321,6 @@ export default function ChatWindow({ scrollContainerRef, domain = 'Production', 
           </>
         )}
         <div className="chat-input-row flex items-center gap-2 sm:gap-2.5 px-2 sm:px-3 py-1.5">
-          <button
-            onClick={() => createConversation(domain)}
-            title="New Chat"
-            className={`${isRecording ? 'hidden' : 'flex'} flex-shrink-0 w-10 h-10 min-w-[40px] min-h-[40px] items-center justify-center rounded-full text-white shadow-[0_2px_12px_rgba(29,108,184,0.45)] hover:scale-[1.06] active:scale-95 transition-all duration-200 border-none outline-none`}
-            style={{ background: 'linear-gradient(135deg, #1D6CB8, #2A8FD4)' }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/>
-              <line x1="10" y1="11" x2="14" y2="11"/>
-            </svg>
-          </button>
           <VoiceButton onRecordComplete={handleVoiceToggle} disabled={isLoading || isStreaming} />
           <TextInput
             onSend={handleTextSend}

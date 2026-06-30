@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { HiPaperAirplane, HiPaperClip, HiX } from 'react-icons/hi';
+import { HiPaperAirplane, HiX } from 'react-icons/hi';
 
 export default function TextInput({ onSend, disabled = false, onFocus, onBlur }) {
   const [text, setText] = useState('');
@@ -140,7 +140,7 @@ export default function TextInput({ onSend, disabled = false, onFocus, onBlur })
         </div>
       )}
 
-      {/* Input row: [📎] [textarea] [send] */}
+      {/* Input row: [+] [textarea] [send] */}
       <div className="flex items-center gap-2">
 
         <button
@@ -152,7 +152,10 @@ export default function TextInput({ onSend, disabled = false, onFocus, onBlur })
           aria-label="Attach file or image"
           title="Attach file"
         >
-          <HiPaperClip size={20} />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
         </button>
 
         <input
@@ -169,7 +172,7 @@ export default function TextInput({ onSend, disabled = false, onFocus, onBlur })
           ref={textareaRef}
           id="text-input-field"
           className="text-input-field flex-1 min-w-0 resize-none bg-transparent border-none outline-none focus-visible:outline-none text-[var(--txt)] text-[0.9375rem] leading-6 py-2 px-3 min-h-[40px] max-h-[120px] overflow-auto font-sans placeholder:text-[var(--txt3)] disabled:opacity-50"
-          placeholder="Type a message..."
+          placeholder="Speak your message..."
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -178,7 +181,7 @@ export default function TextInput({ onSend, disabled = false, onFocus, onBlur })
           onFocus={onFocus}
           onBlur={onBlur}
           rows={1}
-          aria-label="Type a message"
+          aria-label="Speak your message"
         />
 
         <button

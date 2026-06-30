@@ -558,11 +558,7 @@ export default function PharmaPlantDashboard() {
             <div style={{ fontSize: 10.5, color: 'var(--txt3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Operations Overview · {data.latestDate}</div>
           </div>
         </div>
-        <div style={{ flexShrink: 0, marginLeft: 8 }}>
-          <div style={{ fontSize: 10.5, color: T.green.text, background: T.green.light, padding: "4px 10px", borderRadius: 20, border: `1px solid ${T.green.solid}30`, fontWeight: 600, whiteSpace: "nowrap" }}>
-            ●<span className="pd-live-text"> Live · Updated just now</span>
-          </div>
-        </div>
+
       </div>
 
       <div className="pd-content">
@@ -649,7 +645,6 @@ export default function PharmaPlantDashboard() {
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ padding: "11px 16px", borderBottom: '1px solid var(--brd)', display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt)', letterSpacing: "0.01em" }}>Critical Machine Parameters</span>
-              <span style={{ fontSize: 10, fontWeight: 600, color: T.green.text, background: T.green.light, padding: "2px 8px", borderRadius: 10 }}>● Live</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)" }}>
               {criticalParams.map((p, i) => {

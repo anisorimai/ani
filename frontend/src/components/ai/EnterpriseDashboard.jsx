@@ -398,9 +398,7 @@ export default function EnterpriseDashboard() {
               </span>
             ))}
           </div>
-          <div style={{ fontSize: 10.5, color: T.green.text, background: T.green.light, padding: '4px 10px', borderRadius: 20, border: `1px solid ${T.green.solid}30`, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
-            ● Live
-          </div>
+
         </div>
       </div>
 

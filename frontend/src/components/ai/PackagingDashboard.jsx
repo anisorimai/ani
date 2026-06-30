@@ -143,7 +143,6 @@ export default function PackagingDashboard() {
             <div style={{ fontSize: 10.5, color: 'var(--txt3)' }}>Line Dashboard</div>
           </div>
         </div>
-        <div style={{ fontSize: 10.5, color: T.green.text, background: T.green.light, padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>● Live</div>
       </div>
 
       <div style={{ padding: '12px 14px 25px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflowY: 'auto' }}>
